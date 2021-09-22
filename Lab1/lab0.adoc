@@ -9,7 +9,7 @@
 * Создадим новый проект Project => Create New Project.
 
 .Создание нового проекта
-image::Images/image-2021-09-22-21-54-35-616.png[]
+image::Images/img1.png[]
 
 === Выберем шаблон проекта
 * ProjectTemplates: C++ => main.
