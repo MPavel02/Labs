@@ -15,11 +15,11 @@ image::Images/img1.png[]
 * ProjectTemplates: C++ => main.
 
 .Выбор шаблона проекта
-image::Images/image-2021-09-22-22-01-48-796.png[]
+image::Images/img2.png[]
 
 === Выберем микроконтроллера
 * Сохраним проект под любым именем, например project1.
 * В свойствах проекта выберем модель микроконтроллера ST => STM32F4 => STM32F411 => ST STM32F411RE. Для этого правой кнопкой мыши щелкнем по проекту, выберем Options и далее в категории General Option выберем вкладку Target.
 
 .Выбор модели микроконтроллера
-image::Images/image-2021-09-22-22-07-30-494.png[]
+image::Images/img3.png[]
