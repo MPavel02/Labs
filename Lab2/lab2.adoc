@@ -72,7 +72,7 @@ image::img6.png[]
 
 * Для включения светодиода воспользуемся кодом из задания и запишем его в функцию *main*, предварительно необходимо включить библиотеки, чтобы всё работало. Код представлен ниже;
 
-[source,perl]
+[source,c]
 ----
 #include "rccregisters.hpp" // for RCC
 #include "gpioaregisters.hpp" //for Gpioa
