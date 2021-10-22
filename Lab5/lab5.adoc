@@ -74,6 +74,7 @@ extern "C"
     // Установка коэффициентов пересчета частоты
     RCC::PLLCFGR::PLLN0::Set(120);
     RCC::PLLCFGR::PLLM0::Set(32);
+    RCC::PLLCFGR::PLLP0::Set(2);
 
     // Включаем внутренний источник PLL
     RCC::CR::PLLON::On::Set();
@@ -112,7 +113,7 @@ using FieldValues = RCC_PLLCFGR_PLLM_Values<RCC::PLLCFGR, 0, 5, NoAccess, NoAcce
 using PLLM0 = RCC_PLLCFGR_PLLM_Values<RCC::PLLCFGR, 0, 5, ReadWriteMode, RCCPLLCFGRBase> ;
 ----
 
-PLLP0 по станадрту 2. При возникновении ошибки, представленной на рисунке 1 нажимаем *Ignore*.
+При возникновении ошибки, представленной на рисунке 1 нажимаем *Ignore*.
 
 .Ошибка, возникающая при запуске кода
 image::img1.png[]
