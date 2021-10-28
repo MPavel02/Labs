@@ -99,29 +99,33 @@ GPIOC::MODER::MODER13::Input::Set();
 ----
 int main()
 {
-  int flag = 0;
+    int flag = 0;
 
-  for(;;)
-  {
-    if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
+    for(;;)
     {
-      flag = 1;
+      if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
+      {
+        delay(300000);
 
-      GPIOA::ODR::ODR5::High::Set();
-      GPIOC::ODR::ODR5::High::Set();
-      GPIOC::ODR::ODR8::High::Set();
-      GPIOC::ODR::ODR9::High::Set();
-    }
-    else if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 1)
-    {
-      flag = 0;
+        flag = 1;
 
-      GPIOA::ODR::ODR5::Low::Set();
-      GPIOC::ODR::ODR5::Low::Set();
-      GPIOC::ODR::ODR8::Low::Set();
-      GPIOC::ODR::ODR9::Low::Set();
+        GPIOA::ODR::ODR5::High::Set();
+        GPIOC::ODR::ODR5::High::Set();
+        GPIOC::ODR::ODR8::High::Set();
+        GPIOC::ODR::ODR9::High::Set();
+      }
+      else if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 1)
+      {
+        delay(300000);
+
+        flag = 0;
+
+        GPIOA::ODR::ODR5::Low::Set();
+        GPIOC::ODR::ODR5::Low::Set();
+        GPIOC::ODR::ODR8::Low::Set();
+        GPIOC::ODR::ODR9::Low::Set();
+      }
     }
-  }
 
   return 1;
 }
@@ -195,31 +199,44 @@ extern "C"
   }
 }
 
+int delay(int cycles)
+{
+    for(int i = 0; i<cycles; ++i)
+    {
+        asm volatile("");
+    }
+    return 1;
+}
+
 int main()
 {
-  int flag = 0;
+    int flag = 0;
 
-  for(;;)
-  {
-    if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
+    for(;;)
     {
-      flag = 1;
+      if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
+      {
+        delay(300000);
 
-      GPIOA::ODR::ODR5::High::Set();
-      GPIOC::ODR::ODR5::High::Set();
-      GPIOC::ODR::ODR8::High::Set();
-      GPIOC::ODR::ODR9::High::Set();
-    }
-    else if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 1)
-    {
-      flag = 0;
+        flag = 1;
 
-      GPIOA::ODR::ODR5::Low::Set();
-      GPIOC::ODR::ODR5::Low::Set();
-      GPIOC::ODR::ODR8::Low::Set();
-      GPIOC::ODR::ODR9::Low::Set();
+        GPIOA::ODR::ODR5::High::Set();
+        GPIOC::ODR::ODR5::High::Set();
+        GPIOC::ODR::ODR8::High::Set();
+        GPIOC::ODR::ODR9::High::Set();
+      }
+      else if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 1)
+      {
+        delay(300000);
+
+        flag = 0;
+
+        GPIOA::ODR::ODR5::Low::Set();
+        GPIOC::ODR::ODR5::Low::Set();
+        GPIOC::ODR::ODR8::Low::Set();
+        GPIOC::ODR::ODR9::Low::Set();
+      }
     }
-  }
 
   return 1;
 }
