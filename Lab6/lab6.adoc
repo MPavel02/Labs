@@ -4,7 +4,7 @@
 == Лабораторная работа №6
 === Задание
 --
-Написать программу, которая по нажатию на User Button зажигает все 4 светодиода, а по следующему нажатию тушит все 4 светодиода. Настроить правильно порты.
+Написать программу, которая по отжатию на User Button зажигает все 4 светодиода, а по следующему нажатию тушит все 4 светодиода. Настроить правильно порты.
 --
 === 1. Настройка портов
 Для начала подключим порт к шине тактирования:
@@ -92,7 +92,7 @@ GPIOC::MODER::MODER13::Input::Set();
 ----
 
 === 2. Код программы
-Напишем код, при котором при нажатии на кнопку будут загораться 4 светодиода, а при повторном ее нажатии они будут гаснуть.
+Напишем код, при котором при отжатии на кнопку будут загораться 4 светодиода, а при повторном ее отжатии они будут гаснуть.
 
 Листинг кода функции *main* представлен ниже:
 [source,c]
@@ -100,30 +100,50 @@ GPIOC::MODER::MODER13::Input::Set();
 int main()
 {
     int flag = 0;
+    int tick = 0;
+    int tick1 = 0;
 
     for(;;)
     {
       if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
       {
-        delay(300000);
-
+        tick1++;
         flag = 1;
 
-        GPIOA::ODR::ODR5::High::Set();
-        GPIOC::ODR::ODR5::High::Set();
-        GPIOC::ODR::ODR8::High::Set();
-        GPIOC::ODR::ODR9::High::Set();
+       if(tick1%2 == 0)
+       {
+         GPIOA::ODR::ODR5::High::Set();
+         GPIOC::ODR::ODR5::High::Set();
+         GPIOC::ODR::ODR8::High::Set();
+         GPIOC::ODR::ODR9::High::Set();
+       }
+       else
+       {
+          GPIOA::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR8::Low::Set();
+          GPIOC::ODR::ODR9::Low::Set();
+       }
       }
-      else if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 1)
+      else if(GPIOC::IDR::IDR13::High::IsSet() && flag == 1)
       {
-        delay(300000);
-
+        tick++;
         flag = 0;
 
-        GPIOA::ODR::ODR5::Low::Set();
-        GPIOC::ODR::ODR5::Low::Set();
-        GPIOC::ODR::ODR8::Low::Set();
-        GPIOC::ODR::ODR9::Low::Set();
+        if(tick%2 == 0)
+        {
+          GPIOA::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR8::Low::Set();
+          GPIOC::ODR::ODR9::Low::Set();
+        }
+        else
+        {
+          GPIOA::ODR::ODR5::High::Set();
+          GPIOC::ODR::ODR5::High::Set();
+          GPIOC::ODR::ODR8::High::Set();
+          GPIOC::ODR::ODR9::High::Set();
+        }
       }
     }
 
@@ -199,42 +219,53 @@ extern "C"
   }
 }
 
-int delay(int cycles)
-{
-    for(int i = 0; i<cycles; ++i)
-    {
-        asm volatile("");
-    }
-    return 1;
-}
-
 int main()
 {
     int flag = 0;
+    int tick = 0;
+    int tick1 = 0;
 
     for(;;)
     {
       if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
       {
-        delay(300000);
-
+        tick1++;
         flag = 1;
 
-        GPIOA::ODR::ODR5::High::Set();
-        GPIOC::ODR::ODR5::High::Set();
-        GPIOC::ODR::ODR8::High::Set();
-        GPIOC::ODR::ODR9::High::Set();
+       if(tick1%2 == 0)
+       {
+         GPIOA::ODR::ODR5::High::Set();
+         GPIOC::ODR::ODR5::High::Set();
+         GPIOC::ODR::ODR8::High::Set();
+         GPIOC::ODR::ODR9::High::Set();
+       }
+       else
+       {
+          GPIOA::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR8::Low::Set();
+          GPIOC::ODR::ODR9::Low::Set();
+       }
       }
-      else if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 1)
+      else if(GPIOC::IDR::IDR13::High::IsSet() && flag == 1)
       {
-        delay(300000);
-
+        tick++;
         flag = 0;
 
-        GPIOA::ODR::ODR5::Low::Set();
-        GPIOC::ODR::ODR5::Low::Set();
-        GPIOC::ODR::ODR8::Low::Set();
-        GPIOC::ODR::ODR9::Low::Set();
+        if(tick%2 == 0)
+        {
+          GPIOA::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR5::Low::Set();
+          GPIOC::ODR::ODR8::Low::Set();
+          GPIOC::ODR::ODR9::Low::Set();
+        }
+        else
+        {
+          GPIOA::ODR::ODR5::High::Set();
+          GPIOC::ODR::ODR5::High::Set();
+          GPIOC::ODR::ODR8::High::Set();
+          GPIOC::ODR::ODR9::High::Set();
+        }
       }
     }
 
