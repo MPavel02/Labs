@@ -31,7 +31,7 @@ class ILed
     virtual void switchOff() = 0;
 };
 
-//for IModes
+//for IMode
 
 #pragma once
 
