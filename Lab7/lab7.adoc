@@ -4,159 +4,260 @@
 == Лабораторная работа №7
 === Задание
 --
-Сделать дизайн, который позволяет настраивать любой режим моргания светодиодов, с любым количеством светодиодов, привязанных к любым пинам портов в программе StarUML, соответствующий концепции SOLID. Также необходимо реализовать 3 режима - Елочка, Моргунчик, Шахматка, следуя придуманной архитектуре.
+Сделать дизайн, который позволяет настраивать любой режим моргания светодиодов, с любым количеством светодиодов, привязанных к любым пинам портов в программе StarUML, соответствующий концепции SOLID. Также необходимо реализовать 3 режима - Елочка, Моргунчик, Шахматка, следуя придуманной архитектуре. Частота мерцания светодиодов 3,33 МГц.
 --
-=== 1. Настройка портов
-Для начала подключим порт к шине тактирования:
+=== 1. Дизайн программы
+Разработаем дизайн программы в StarUML. Дизайн представлен на рисунке 1.
 
-[source,c]
-----
-// Подключить порт А к шине тактирования
-RCC::AHB1ENR::GPIOAEN::Enable::Set();
-----
-
-Здесь мы подключили порт А к шине тактирования.
-
-Затем необходимо настроить нужный порт, например А5:
-
-[source,c]
-----
-// Настройка порта А.5
-GPIOA::OSPEEDR::OSPEEDR5::LowSpeed::Set();
-GPIOA::PUPDR::PUPDR5::PullUp::Set();
-GPIOA::OTYPER::OT5::OutputPushPull::Set();
-GPIOA::MODER::MODER5::Output::Set();
-----
-
-Здесь *GPIOA* означает, что мы работаем с портом A.
-Затем во второй строчке видно, что мы с помощью регистра *GPIOx_OSPEEDR (port output speed register)* определяем скорость работы порта. *Low Speed* означает самую низкую скорость, она обычно установлена по умолчанию.
-
-В 3 строчке регистр *GPIOx_PUPDR (port pull-up/pull-down register)* означает подключение подтягивающих резисторов, *PUPDR5* подключает 5 линию,а *PullUp* означает что подтяжка есть.
-
-*Зачем же нужна подтяжка?*
-
-Она нужна так как плавающий сигнал на подвешенной ножке может быть причиной следующих проблем:
-----
-* Разное значение при считывании (1 или 0) в разные моменты времени;
-* Ложные переходы (если настроено прерывание, то вы псотоянно будет входить в обработчик);
-* Повышенное потребление из-за того, что схема входного буфера для ножки потребляет ток когда сигнал на ножке не полностью High или Low.
-----
-Обычно подтягивают к 0 или 1.
-
-.Цифровой вход с подтяжкой к 1
+.Дизайн программы
 image::img1.png[]
 
-Регистр *GPIOx_OTYPER (port output type register)* определяет какой из выводов надо использовать. В нашем случае 5, поэтому мы пишем *OT5*. *Push-Pull (двухтактный)* или *Open Drain (выход с открытым коллектором)*.
+Реализуем дизайн программно.
 
-Затем через регистр *MODER* настраиваем порт на вход или выход. В нашем случае порт выдает свет на светодиоде, поэтому на выход, то есть:
+=== 2. Программная реализация
+Напишем коды виртуальных классов *ILed*, *IMode* и *IButton* для классов *Led*, *Modes* и *Button*, которые отвечают за работу светодиода, режимов этих светодиодов и кнопки соответственно. Затем пропишем коды для классов *Led*, *Modes* и *Button*, а также класса *Leds*, который объединяет все светодиоды и также делает их способными работать в нескольких режимах объединенно или в любой последовательности.
 
+Листинг кода классов *ILed*, *IMode* и *IButton* представлен ниже:
 [source,c]
 ----
-GPIOA::MODER::MODER5::Output::Set();
-----
+//for ILed
 
-Для кнопки *User_Button* настроим на вход, так как мы делаем нажатие. По рисунку 2 видно, что порт кнопки 13.
+#pragma once
 
-.Схема подключения портов на плате STM32F411
-image::img2.png[]
-
-Произведем аналогичную настройку для всех портов оставшихся светодиодов. Для кнопки сделаем свою настройку, так как у кнопки есть есть внешняя подтяжка, поэтому внутренняя не нужна.
-
-Листинг кода настройки портов для светодиодов и кнопки:
-[source,c]
-----
-// Подключить порт C к шине тактирования
-RCC::AHB1ENR::GPIOCEN::Enable::Set();
-
-// Настройка порта C.5
-GPIOC::OSPEEDR::OSPEEDR5::LowSpeed::Set();
-GPIOC::PUPDR::PUPDR5::PullUp::Set();
-GPIOC::OTYPER::OT5::OutputPushPull::Set();
-GPIOC::MODER::MODER5::Output::Set();
-
-// Настройка порта C.8
-GPIOC::OSPEEDR::OSPEEDR8::LowSpeed::Set();
-GPIOC::PUPDR::PUPDR8::PullUp::Set();
-GPIOC::OTYPER::OT8::OutputPushPull::Set();
-GPIOC::MODER::MODER8::Output::Set();
-
-// Настройка порта C.9
-GPIOC::OSPEEDR::OSPEEDR9::LowSpeed::Set();
-GPIOC::PUPDR::PUPDR9::PullUp::Set();
-GPIOC::OTYPER::OT9::OutputPushPull::Set();
-GPIOC::MODER::MODER9::Output::Set();
-
-// Настройка порта C.13
-GPIOC::OSPEEDR::OSPEEDR13::MediumSpeed::Set();
-GPIOC::MODER::MODER13::Input::Set();
-----
-
-=== 2. Код программы
-Напишем код, при котором при отжатии на кнопку будут загораться 4 светодиода, а при повторном ее отжатии они будут гаснуть.
-
-Листинг кода функции *main* представлен ниже:
-[source,c]
-----
-int main()
+class ILed
 {
-    int flag = 0;
-    int tick = 0;
-    int tick1 = 0;
+  public:
+    virtual void toggle() = 0;
+    virtual void switchOff() = 0;
+};
 
-    for(;;)
+//for ILed
+
+#pragma once
+
+class IMode
+{
+  public:
+    virtual void toggle() const = 0;
+    virtual void init() const = 0;
+};
+
+//for IButton
+
+#pragma once
+
+class IButton
+{
+  public:
+    virtual bool IsPressed() = 0;
+};
+----
+
+Листинг кода классов *Led*, *Mode* и *Button* представлен ниже:
+[source,c]
+----
+//for Led
+
+#pragma once
+#include "iled.h" // for ILed
+
+template<typename Port, uint32_t pinNum>
+class Led : public ILed
+{
+  public:
+    void toggle() override
     {
-      if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
-      {
-        tick1++;
-        flag = 1;
-
-       if(tick1%2 == 0)
-       {
-         GPIOA::ODR::ODR5::High::Set();
-         GPIOC::ODR::ODR5::High::Set();
-         GPIOC::ODR::ODR8::High::Set();
-         GPIOC::ODR::ODR9::High::Set();
-       }
-       else
-       {
-          GPIOA::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR8::Low::Set();
-          GPIOC::ODR::ODR9::Low::Set();
-       }
-      }
-      else if(GPIOC::IDR::IDR13::High::IsSet() && flag == 1)
-      {
-        tick++;
-        flag = 0;
-
-        if(tick%2 == 0)
-        {
-          GPIOA::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR8::Low::Set();
-          GPIOC::ODR::ODR9::Low::Set();
-        }
-        else
-        {
-          GPIOA::ODR::ODR5::High::Set();
-          GPIOC::ODR::ODR5::High::Set();
-          GPIOC::ODR::ODR8::High::Set();
-          GPIOC::ODR::ODR9::High::Set();
-        }
-      }
+      Port::ODR::Toggle(1U << pinNum);
     }
 
-  return 1;
-}
+    void switchOff() override
+    {
+       Port::ODR::Set(1U << pinNum);
+    }
+};
+
+//for Modes
+
+#pragma once
+
+template<auto* ...pArgs>
+struct Modes
+{
+  public:
+    void nextmode()
+    {
+      modeIndex++;
+      if(modeIndex == std::size(pModes))
+      {
+        modeIndex = 0U;
+      }
+      pModes[modeIndex]->init();
+    }
+
+    void update()
+    {
+      pModes[modeIndex]->toggle();
+    }
+
+  private:
+    uint32_t modeIndex = 0U;
+    IMode* pModes[sizeof ...(pArgs)] = {pArgs...};
+};
+
+//for Button
+
+#pragma once
+#include "ibutton.h" // for IButton
+
+template<typename Port, uint32_t pinNum>
+class Button : public IButton
+{
+public:
+  bool IsPressed() override
+  {
+    bool result = false;
+
+    // Если кнопка прижата
+
+    if((Port::IDR::Get()&(1U << pinNum)) == 0)
+    {
+      // Ждем пока кнопка не отпустится
+
+      result = true;
+    }
+
+    return result;
+  }
+};
 ----
 
-Представим листинг кода всей программы:
+Представим код класса *Leds*:
+[source,c]
+----
+#pragma once
+#include "iled.h" // for ILed
+
+template<auto* ...pArgs>
+struct Leds
+{
+  ILed* pLeds[sizeof ...(pArgs)] = {pArgs...};
+  void toggle()
+  {
+    for(auto it: pLeds)
+    {
+      it->toggle();
+    }
+  }
+
+  void switchOff()
+  {
+    for(auto it: pLeds)
+    {
+      it->switchOff();
+    }
+  }
+};
+----
+
+Осталось привести реализацию режимов Елочка, Моргунчик, Шахматка.
+Листинг кода классов *Tree*, *All* и *Chess* представлен ниже:
+[source,c]
+----
+//for Tree
+
+#pragma once
+#include "imode.h" //for IMode
+
+template <auto& TLeds>
+class Tree : public IMode
+{
+  public:
+    void toggle() const override
+    {
+       for (uint32_t index =0; index < std::size(TLeds.pLeds); ++index)
+       {
+          TLeds.pLeds[index]->toggle();
+
+          for (int i = 0; i < 200000; ++i)
+          {
+            asm volatile("");
+          }
+       }
+    }
+
+    void init() const override
+    {
+      TLeds.switchOff();
+    }
+};
+
+//for All
+
+#pragma once
+#include "imode.h" //for IMode
+
+template <auto& TLeds>
+class All : public IMode
+{
+  public:
+    void toggle() const override
+    {
+      TLeds.toggle();
+    }
+
+    void init() const override
+    {
+      for(auto it: TLeds.pLeds)
+      {
+        it->toggle();
+      }
+    }
+};
+
+//for Chess
+
+#pragma once
+#include "imode.h" //for IMode
+
+template <auto& TLeds>
+class Chess : public IMode
+{
+  public:
+    void toggle() const override
+    {
+      TLeds.toggle();
+    }
+
+    void init() const override
+    {
+      uint32_t index = 0;
+      for(auto it: TLeds.pLeds)
+      {
+        if((index % 2U) == 0U)
+        {
+          it->toggle();
+        }
+        index++;
+      }
+    }
+};
+----
+
+Осталось представить код класса *main*. В ТЗ было необходимо использовать частоту мерцания 3,33 МГц, расчет данной чатоты был исполнен с помощью внутреннего генератора 16 МГц. Код представлен ниже.
+Листинг кода класса *main*:
 [source,c]
 ----
 #include "rccregisters.hpp" // for RCC
 #include "gpioaregisters.hpp" //for Gpioa
 #include "gpiocregisters.hpp" //for Gpioc
+#include "led.h" // for Led
+#include "iled.h" // for ILed
+#include "leds.h" // for Leds
+#include "button.h" // for Button
+#include "chess.h" // for Chess
+#include "all.h" // for All
+#include "tree.h" // for Tree
+#include "modes.h" // for Modes
 
 std::uint32_t SystemCoreClock = 16'000'000U;
 
@@ -164,21 +265,31 @@ extern "C"
 {
   int __low_level_init(void)
   {
-    // Включаем внешний генератор с частотой 8 МГц
-    RCC::CR::HSEON::On::Set();
+    // Включаем внутренний генератор с частотой 16 МГц
+    RCC::CR::HSION::On::Set();
 
-    // Дожидаемся стабилизации внешнего генератора
-    while (RCC::CR::HSERDY::NotReady::IsSet())
+    // Дожидаемся стабилизации внутреннего генератора
+    while (RCC::CR::HSIRDY::NotReady::IsSet())
     {
-
     }
 
-    // Дожидаемся стабилизации внешнего HSE
-    RCC::CFGR::SW::Hse::Set();
+    // Установка коэффициентов пересчета частоты
+    RCC::PLLCFGR::PLLN0::Set(100);
+    RCC::PLLCFGR::PLLM0::Set(60);
+    RCC::PLLCFGR::PLLP0::Set(8);
 
-    while (!RCC::CFGR::SWS::Hse::IsSet())
+    // Включаем внутренний источник PLL
+    RCC::CR::PLLON::On::Set();
+
+    // Дожидаемся стабилизации внутреннего источника PLL
+    while (RCC::CR::PLLRDY::Unclocked::IsSet())
     {
+    }
 
+    RCC::CFGR::SW::Pll::Set();
+
+    while (!RCC::CFGR::SWS::Pll::IsSet())
+    {
     }
 
     // Подключить порт А к шине тактирования
@@ -219,62 +330,57 @@ extern "C"
   }
 }
 
-int main()
+void delay(uint32_t value)
 {
-    int flag = 0;
-    int tick = 0;
-    int tick1 = 0;
+  for(int32_t i = 0; i < value; ++i)
+  {
+    asm volatile("");
+  }
+}
 
-    for(;;)
-    {
-      if(GPIOC::IDR::IDR13::Low::IsSet() && flag == 0)
-      {
-        tick1++;
-        flag = 1;
+Led<GPIOA, 5U> led1;
+Led<GPIOC, 9U> led2;
+Led<GPIOC, 8U> led3;
+Led<GPIOC, 5U> led4;
+Leds<&led1, &led2, &led3, &led4> leds;
+Chess<leds> chessMode;
+All<leds> allMode;
+Tree<leds> treeMode;
+Modes<&allMode, &chessMode, &treeMode> modes;
 
-       if(tick1%2 == 0)
+Button<GPIOC, 13U> userButton;
+
+int main(void)
+{
+  int32_t counter = 0;
+
+  for(;;)
+  {
+     if(userButton.IsPressed())
+     {
+       while(userButton.IsPressed())
        {
-         GPIOA::ODR::ODR5::High::Set();
-         GPIOC::ODR::ODR5::High::Set();
-         GPIOC::ODR::ODR8::High::Set();
-         GPIOC::ODR::ODR9::High::Set();
        }
-       else
-       {
-          GPIOA::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR8::Low::Set();
-          GPIOC::ODR::ODR9::Low::Set();
-       }
-      }
-      else if(GPIOC::IDR::IDR13::High::IsSet() && flag == 1)
-      {
-        tick++;
-        flag = 0;
+       modes.nextmode();
+     }
+     delay(1000000U); //100 ms
 
-        if(tick%2 == 0)
-        {
-          GPIOA::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR5::Low::Set();
-          GPIOC::ODR::ODR8::Low::Set();
-          GPIOC::ODR::ODR9::Low::Set();
-        }
-        else
-        {
-          GPIOA::ODR::ODR5::High::Set();
-          GPIOC::ODR::ODR5::High::Set();
-          GPIOC::ODR::ODR8::High::Set();
-          GPIOC::ODR::ODR9::High::Set();
-        }
-      }
-    }
+     modes.update();
 
-  return 1;
+     if(counter == 500)
+     {
+       modes.update();
+       counter = 0;
+     }
+     counter++;
+  }
 }
 ----
 
 === 3. Результат выполнения
-На рисунке 3 представлен результат выполнения программы.
+На рисунке 2 представлен результат выполнения программы.
 
 .Результат выполнения программы
 image::gif1.gif[]
+
+В данном проекте не удалось реализовать отчеливый отклик кнопки, то есть так чтобы при каждом нажатии режим переключался, поэтому это главный недостаток написанной программы.
