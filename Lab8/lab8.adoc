@@ -1,0 +1,429 @@
+:imagesdir: Images
+:figure-caption: Рисунок
+
+== Лабораторная работа №8
+=== Задание
+--
+Сделать все тоже самое, что и в 7 лабораторной, но дополнительно использовать таймер:
+
+1. Подключить микроконтроллер к внешнему источнику тактирования HSE.
+2. Написать программу морганиями всеми 4 светодиодами на плате с периодом в 0.5 секунды
+3. По нажатию кнопки увеличивать период моргания на 0.1 секунды.
+--
+=== 1. Дизайн программы
+Разработаем дизайн программы в StarUML. Дизайн представлен на рисунке 1.
+
+.Дизайн программы
+image::img1.png[]
+
+Реализуем дизайн программно.
+
+=== 2. Программная реализация
+Напишем коды виртуальных классов *ILed*, *IMode* и *IButton* для классов *Led*, *Modes* и *Button*, которые отвечают за работу светодиода, режимов этих светодиодов и кнопки соответственно. Затем пропишем коды для классов *Led*, *Modes* и *Button*, а также класса *Leds*, который объединяет все светодиоды и также делает их способными работать в нескольких режимах объединенно или в любой последовательности.
+
+Листинг кода классов *ILed*, *IMode* и *IButton* представлен ниже:
+[source,c]
+----
+//for ILed
+
+#pragma once
+
+class ILed
+{
+  public:
+    virtual void toggle() = 0;
+    virtual void switchOff() = 0;
+};
+
+//for IModes
+
+#pragma once
+
+class IMode
+{
+  public:
+    virtual void toggle() const = 0;
+    virtual void init() const = 0;
+};
+
+//for IButton
+
+#pragma once
+
+class IButton
+{
+  public:
+    virtual bool IsPressed() = 0;
+};
+----
+
+Листинг кода классов *Led*, *Mode* и *Button* представлен ниже:
+[source,c]
+----
+//for Led
+
+#pragma once
+#include "iled.h" // for ILed
+
+template<typename Port, uint32_t pinNum>
+class Led : public ILed
+{
+  public:
+    void toggle() override
+    {
+      Port::ODR::Toggle(1U << pinNum);
+    }
+
+    void switchOff() override
+    {
+       Port::ODR::Set(1U << pinNum);
+    }
+};
+
+//for Modes
+
+#pragma once
+
+template<auto* ...pArgs>
+struct Modes
+{
+  public:
+    void nextmode()
+    {
+      modeIndex++;
+      if(modeIndex == std::size(pModes))
+      {
+        modeIndex = 0U;
+      }
+      pModes[modeIndex]->init();
+    }
+
+    void update()
+    {
+      pModes[modeIndex]->toggle();
+    }
+
+  private:
+    uint32_t modeIndex = 0U;
+    IMode* pModes[sizeof ...(pArgs)] = {pArgs...};
+};
+
+//for Button
+
+#pragma once
+#include "ibutton.h" // for IButton
+
+template<typename Port, uint32_t pinNum>
+class Button : public IButton
+{
+public:
+  bool IsPressed() override
+  {
+    bool result = false;
+
+    // Если кнопка прижата
+
+    if((Port::IDR::Get()&(1U << pinNum)) == 0)
+    {
+      // Ждем пока кнопка не отпустится
+
+      result = true;
+    }
+
+    return result;
+  }
+};
+----
+
+Представим код класса *Leds*:
+[source,c]
+----
+#pragma once
+#include "iled.h" // for ILed
+
+template<auto* ...pArgs>
+struct Leds
+{
+  ILed* pLeds[sizeof ...(pArgs)] = {pArgs...};
+  void toggle()
+  {
+    for(auto it: pLeds)
+    {
+      it->toggle();
+    }
+  }
+
+  void switchOff()
+  {
+    for(auto it: pLeds)
+    {
+      it->switchOff();
+    }
+  }
+};
+----
+
+Осталось привести реализацию режимов Елочка, Моргунчик, Шахматка.
+Листинг кода классов *Tree*, *All* и *Chess* представлен ниже:
+[source,c]
+----
+//for Tree
+
+#pragma once
+#include "imode.h" //for IMode
+
+template <auto& TLeds>
+class Tree : public IMode
+{
+  public:
+    void toggle() const override
+    {
+       for (uint32_t index =0; index < std::size(TLeds.pLeds); ++index)
+       {
+          TLeds.pLeds[index]->toggle();
+
+          for (int i = 0; i < 200000; ++i)
+          {
+            asm volatile("");
+          }
+       }
+    }
+
+    void init() const override
+    {
+      TLeds.switchOff();
+    }
+};
+
+//for All
+
+#pragma once
+#include "imode.h" //for IMode
+
+template <auto& TLeds>
+class All : public IMode
+{
+  public:
+    void toggle() const override
+    {
+      TLeds.toggle();
+    }
+
+    void init() const override
+    {
+      for(auto it: TLeds.pLeds)
+      {
+        it->toggle();
+      }
+    }
+};
+
+//for Chess
+
+#pragma once
+#include "imode.h" //for IMode
+
+template <auto& TLeds>
+class Chess : public IMode
+{
+  public:
+    void toggle() const override
+    {
+      TLeds.toggle();
+    }
+
+    void init() const override
+    {
+      uint32_t index = 0;
+      for(auto it: TLeds.pLeds)
+      {
+        if((index % 2U) == 0U)
+        {
+          it->toggle();
+        }
+        index++;
+      }
+    }
+};
+----
+
+Осталось представить код функции *main*. В классе *main* подключаем библиотеки для таймера:
+[source,c]
+----
+#include "tim2registers.hpp"   //for SPI2
+#include "nvicregisters.hpp"  //for NVIC
+----
+
+Для организации задержки необходимо:
+--
+* Подать тактирование на модуль таймера
+* Установить делитель частоты для таймера в регистре *PSC*
+* Установить источник генерации прерываний по событию переполнение с помощью бита *URS* в регистре *CR1*
+* Установить значение до которого счетчик будет считать в регистре перезагрузке *ARR*
+* Скинуть флаг генерации прерывания *UIF* по событию в регистре *SR*
+* Установить начальное значение счетчика в *0* в регистре *CNT*
+* Запустить счетчик с помощью бита *EN* в регистре *CR1*
+* Проверять пока не будет установлен флаг генерации прерывания по событию *UIF* в регистре *SR*
+* Как только флаг установлен остановить счетчик, сбросить бит *EN* в регистре *CR1*, Сбросить флаг генерации прерывания *UIF* по событию в регистре *SR*
+--
+
+Осталось проделать вышеперечисленные операции, создав функцию задержки.
+Создаем функцию задержки *delayMs* с использованием таймера:
+[source,c]
+----
+void delayMs(uint32_t value)
+{
+  const auto delay = (value * TimerClock) / 1000U;
+  TIM2::ARR::Write(delay);
+  TIM2::SR::UIF::NoInterruptPending::Set();
+  TIM2::CNT::Write(0U);
+  TIM2::CR1::CEN::Enable::Set();
+  while(TIM2::SR::UIF::NoInterruptPending::IsSet())
+  {
+  }
+  TIM2::SR::UIF::NoInterruptPending::Set();
+  TIM2::CR1::CEN::Disable::Set();
+}
+----
+
+Листинг кода функции *main*:
+[source,c]
+----
+#include "rccregisters.hpp" // for RCC
+#include "gpioaregisters.hpp" //for Gpioa
+#include "gpiocregisters.hpp" //for Gpioc
+#include "led.h" // for Led
+#include "iled.h" // for ILed
+#include "leds.h" // for Leds
+#include "button.h" // for Button
+#include "chess.h" // for Chess
+#include "all.h" // for All
+#include "tree.h" // for Tree
+#include "modes.h" // for Modes
+#include "tim2registers.hpp"   //for SPI2
+#include "nvicregisters.hpp"  //for NVIC
+
+using namespace std;
+
+constexpr auto SystemClock = 16'000'000U;
+constexpr auto TimerClock = 1'000'000U;
+constexpr auto TimerPrescaler = SystemClock / TimerClock;
+
+extern "C"
+{
+  int __low_level_init(void)
+  {
+    // Включаем внешний генератор с частотой 8 МГц
+    RCC::CR::HSEON::On::Set();
+
+    // Дожидаемся стабилизации внешнего генератора
+    while (!RCC::CR::HSERDY::Ready::IsSet())
+    {
+    }
+
+    //Меняем системную частоту на частоту внешнего генератора
+    RCC::CFGR::SW::Hse::Set();
+    while (!RCC::CFGR::SWS::Hse::IsSet())
+    {
+    }
+
+    // Подключить порт А к шине тактирования
+    RCC::AHB1ENR::GPIOAEN::Enable::Set();
+
+    // Настройка порта А.5
+    GPIOA::OSPEEDR::OSPEEDR5::LowSpeed::Set();
+    GPIOA::PUPDR::PUPDR5::PullUp::Set();
+    GPIOA::OTYPER::OT5::OutputPushPull::Set();
+    GPIOA::MODER::MODER5::Output::Set();
+
+    // Подключить порт C к шине тактирования
+    RCC::AHB1ENR::GPIOCEN::Enable::Set();
+
+    // Настройка порта C.5
+    GPIOC::OSPEEDR::OSPEEDR5::LowSpeed::Set();
+    GPIOC::PUPDR::PUPDR5::PullUp::Set();
+    GPIOC::OTYPER::OT5::OutputPushPull::Set();
+    GPIOC::MODER::MODER5::Output::Set();
+
+    // Настройка порта C.8
+    GPIOC::OSPEEDR::OSPEEDR8::LowSpeed::Set();
+    GPIOC::PUPDR::PUPDR8::PullUp::Set();
+    GPIOC::OTYPER::OT8::OutputPushPull::Set();
+    GPIOC::MODER::MODER8::Output::Set();
+
+    // Настройка порта C.9
+    GPIOC::OSPEEDR::OSPEEDR9::LowSpeed::Set();
+    GPIOC::PUPDR::PUPDR9::PullUp::Set();
+    GPIOC::OTYPER::OT9::OutputPushPull::Set();
+    GPIOC::MODER::MODER9::Output::Set();
+
+    // Настройка порта C.13
+    GPIOC::OSPEEDR::OSPEEDR13::MediumSpeed::Set();
+    GPIOC::MODER::MODER13::Input::Set();
+
+    //Настройка таймера 2
+    RCC::APB1ENR::TIM2EN::Enable::Set();
+    TIM2::PSC::Write(TimerPrescaler);   //TimerPrescaler = 16
+
+    return 1;
+  }
+}
+
+void delayMs(uint32_t value)
+{
+  const auto delay = (value * TimerClock) / 1000U;
+  TIM2::ARR::Write(delay);
+  TIM2::SR::UIF::NoInterruptPending::Set();
+  TIM2::CNT::Write(0U);
+  TIM2::CR1::CEN::Enable::Set();
+  while(TIM2::SR::UIF::NoInterruptPending::IsSet())
+  {
+  }
+  TIM2::SR::UIF::NoInterruptPending::Set();
+  TIM2::CR1::CEN::Disable::Set();
+}
+
+Led<GPIOA, 5U> led1;
+Led<GPIOC, 9U> led2;
+Led<GPIOC, 8U> led3;
+Led<GPIOC, 5U> led4;
+Leds<&led1, &led2, &led3, &led4> leds;
+Chess<leds> chessMode;
+All<leds> allMode;
+Tree<leds> treeMode;
+Modes<&allMode, &chessMode, &treeMode> modes;
+
+Button<GPIOC, 13U> userButton;
+
+int main(void)
+{
+  auto delay = 250U;
+
+  for(;;)
+  {
+     if(userButton.IsPressed())
+     {
+       delay+=100U;
+       if(delay > 1000U)
+       {
+         delay = 250U;
+       }
+       while(userButton.IsPressed())
+       {
+       }
+       modes.nextmode();
+     }
+     delayMs(delay);
+
+     modes.update();
+  }
+}
+----
+
+=== 3. Результат выполнения
+На рисунке 2 представлен результат выполнения программы.
+
+.Результат выполнения программы
+image::gif1.gif[]
+
+В данном проекте не удалось реализовать отчеливый отклик кнопки, то есть так чтобы при каждом нажатии режим переключался.
