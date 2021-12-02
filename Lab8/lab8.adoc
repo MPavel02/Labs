@@ -254,6 +254,14 @@ class Chess : public IMode
 #include "nvicregisters.hpp"  //for NVIC
 ----
 
+Также необходимо настроить таймер:
+[source,c]
+----
+//Настройка таймера 2
+    RCC::APB1ENR::TIM2EN::Enable::Set();
+    TIM2::PSC::Write(TimerPrescaler);   //TimerPrescaler = 16
+----
+
 Для организации задержки необходимо:
 --
 * Подать тактирование на модуль таймера
