@@ -119,7 +119,7 @@ USART2::CR1::TE::Enable::Set();
 
     //Start conversion Injected channel доделать!
 
-    ADC1::CR2::SWSTART::On::Set();
+    ADC1::CR2::JSWSTART::On::Set();
 
     // wait until Conversion is not complete
     while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
