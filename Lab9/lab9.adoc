@@ -16,132 +16,134 @@ extern "C"
 {
 int __low_level_init(void)
 {
-//Switch on external 8 MHz oscillator
-
+  //Switch on external 8 MHz oscillator
+ 
   RCC::CR::HSEON::On::Set();
-
+  
   while (!RCC::CR::HSERDY::Ready::IsSet())
   {
   }
-
+  
   //Switch system clock on external oscillator
 
   RCC::CFGR::SW::Hse::Set();
-
+  
   while (!RCC::CFGR::SWS::Hse::IsSet())
   {
   }
-
+  
   // Часть USART
-
+  
   //Порт А к системе тактирования
-
+  
   RCC::AHB1ENR::GPIOAEN::Enable::Set();
-
+  
   //Порт А2 и А3 на альтернативный режим работы
-
+  
   GPIOA::MODER::MODER2::Alternate::Set();
   GPIOA::MODER::MODER3::Alternate::Set();
-
+  
   //Назначение портов А2 и А3 на альтернативную функцию 7
   GPIOA::AFRL::AFRL2::Af7::Set();  // USART2 Tx
   GPIOA::AFRL::AFRL3::Af7::Set();  // USART2 Rx
-
+  
   //Подключаем USART2 к системе тактирования APB1
   RCC::APB1ENR::USART2EN::Enable::Set();
-
+  
   USART2::CR1::OVER8::OversamplingBy16::Set();
   USART2::CR1::M::Data8bits::Set();
   USART2::CR1::PCE::ParityControlDisable::Set();
-
+  
   USART2::BRR::Write(8'000'000 / 9600); // 8 MHz from external 8 MHz oscillator HSE
   USART2::CR1::UE::Enable::Set();
-
+    
   // Часть АЦП
-
+  
    //********* ADC1 setup
    //Switch on clock on ADC1
-
+   
    RCC::APB2ENR::ADC1EN::Enable::Set();
-
+   
    //Switch On internal tempearture sensor
-
+   
    ADC_Common::CCR::TSVREFE::Enable::Set();
-
+   
    //Set single conversion mode
-
+   
    ADC1::CR1::RES::Bits12::Set();
    ADC1::CR2::CONT::SingleConversion::Set();
    ADC1::CR2::EOCS::SingleConversion::Set();
-
+   
    // Set 84 cycles sample rate for channel 18
-
+   
    ADC1::SMPR1::SMP18::Cycles84::Set();
-
+   
    // Set lentgh of conversion sequence to 1
-
-   ADC1::SQR1::L::Conversions1::Set();
-
+   
+   ADC1::JSQR::JL::Conversion1::Set();
+   
    // Connect first conversion on Channel 18
-
-   ADC1::SQR3::SQ1::Set(18);
-
+   
+   ADC1::JSQR::JSQ1::Set(18);
+  
   return 1;
 }
 }
 
 constexpr float B1 = (25.0F - 0.76F/0.0025F); // see datacheet (page 226) and calculate B coeficient here ;
-constexpr float K1 = (3.3F/4095.0F)/0.0025F; // see datcheet ((page 226)) and calculate K coeficient here ;
+constexpr float K1 = (3.3F/4095.0F)/0.0025F; // see datcheet ((page 226)) and calculate K coeficient here ; 
 
 int main(void)
 {
-const char* temper = " ";
-string temp;
-USART2::CR1::TE::Enable::Set();
-
+  const char* temper = " ";
+  string temp;
+  USART2::CR1::TE::Enable::Set();
+  
   const char* ptr = temper;
-
+  
   std::uint32_t data = 0U;
-
+  
   //for Calibrated
-
+  
   //float temperature_calib = 0.0F;
   //uint16_t *CAL1 = (uint16_t *)0x1FFF7A2C;
   //uint16_t *CAL2 = (uint16_t *)0x1FFF7A2E;
-
+  
   // Enable ADC1
-
+  
   ADC1::CR2::ADON::Set(1);
-
-  for(;;)
+  
+  for(;;)    
   {
     //**************ADC*****************
-
+    
     //Start conversion Injected channel доделать!
-
+    
     ADC1::CR2::JSWSTART::On::Set();
-
-    // wait until Conversion is not complete
+    
+    // wait until Conversion is not complete 
     while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
     {
     }
-
+    
     //Get data from ADC
-    data = ADC1::DR::Get(); //Get data from ADC;
+    data = ADC1::JDR1::Get(); //Get data from ADC;
     //Convert ADC counts to temperature
-
+    
     //for Calibrated temp
     //temperature_calib = (((float)(110-30)/(*CAL2-*CAL1)*((float)data - *CAL1))+30);
     //std::cout << "Count: " << data << " Temperature_C: " << temperature_calib << std::endl ;
-
+    
+    std::cout << "Count: " << data << " Temperature_C: " << static_cast<float>(data) * K1 + B1 << std::endl ;
+    
     temp = std::to_string(static_cast<float>(data) * K1 + B1);
-
+    
     temp.insert(0, "Now temperature is ");
-
+    
     temp.append("               ");
-
+    
     temper = temp.c_str();
-
+    
     USART2::DR::Write(*ptr);
     while(USART2::SR::TXE::DataRegisterNotEmpty::IsSet())
     {
@@ -152,7 +154,7 @@ USART2::CR1::TE::Enable::Set();
       ptr = temper;
       for(int i = 0; i < 2000000; ++i)
       {
-
+        
       }
     }
   }
