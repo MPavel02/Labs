@@ -1,93 +1,115 @@
-:imagesdir: Images
-:figure-caption: Рисунок
-
-== Лабораторная работа №9
-=== Задание
---
-Настроить и подключить *аналого-цифровой преобразователь (АЦП)* и вывести значения температуры с термометра *АЦП* по инжекторному каналу. Значения температуры отобразить в программе *Terminal* через порт *USART*.
---
-=== 1. Вывод комнатной температуры с АЦП
-Для начала дадим определение *АЦП*.
-
-*Аналого-цифровое преобразование* – это процесс преобразования входной физической величины в ее числовое представление.
-
-*Аналого-цифровой преобразователь (АЦП)* – устройство, выполняющее такое преобразование. Формально, входной величиной *АЦП* может быть любая физическая величина – напряжение, ток, сопротивление, емкость, частота следования импульсов, угол поворота вала и т.п.
-
-Далее необходимо настроить *АЦП*.
-Листинг кода настройки *АЦП* приведен ниже.
 [source,c]
 ----
-   //********* ADC1 настройка (ADC1 - аналого-цифровой преобразователь)
-   //Переключение на частоту ADC1
+#include "adc1registers.hpp" //for ADC1
+#include "adccommonregisters.hpp" //for ADCCommon
+#include "gpioaregisters.hpp"  //for Gpioa
+#include "gpiocregisters.hpp"  //for Gpioc
+#include "rccregisters.hpp"    //for RCC
+#include "nvicregisters.hpp"   //for NVIC
+#include "usart2registers.hpp" //for USART2
+#include <iostream>
+#include <string>
+
+using namespace std ;
+
+extern "C"
+{
+int __low_level_init(void)
+{
+//Switch on external 8 MHz oscillator
+
+  RCC::CR::HSEON::On::Set();
+
+  while (!RCC::CR::HSERDY::Ready::IsSet())
+  {
+  }
+
+  //Switch system clock on external oscillator
+
+  RCC::CFGR::SW::Hse::Set();
+
+  while (!RCC::CFGR::SWS::Hse::IsSet())
+  {
+  }
+
+  // Часть USART
+
+  //Порт А к системе тактирования
+
+  RCC::AHB1ENR::GPIOAEN::Enable::Set();
+
+  //Порт А2 и А3 на альтернативный режим работы
+
+  GPIOA::MODER::MODER2::Alternate::Set();
+  GPIOA::MODER::MODER3::Alternate::Set();
+
+  //Назначение портов А2 и А3 на альтернативную функцию 7
+  GPIOA::AFRL::AFRL2::Af7::Set();  // USART2 Tx
+  GPIOA::AFRL::AFRL3::Af7::Set();  // USART2 Rx
+
+  //Подключаем USART2 к системе тактирования APB1
+  RCC::APB1ENR::USART2EN::Enable::Set();
+
+  USART2::CR1::OVER8::OversamplingBy16::Set();
+  USART2::CR1::M::Data8bits::Set();
+  USART2::CR1::PCE::ParityControlDisable::Set();
+
+  USART2::BRR::Write(8'000'000 / 9600); // 8 MHz from external 8 MHz oscillator HSE
+  USART2::CR1::UE::Enable::Set();
+
+  // Часть АЦП
+
+   //********* ADC1 setup
+   //Switch on clock on ADC1
 
    RCC::APB2ENR::ADC1EN::Enable::Set();
 
-   //Переключение на температурный сенсор
+   //Switch On internal tempearture sensor
 
    ADC_Common::CCR::TSVREFE::Enable::Set();
 
-   //Установка режима одиночного преобразования
+   //Set single conversion mode
 
    ADC1::CR1::RES::Bits12::Set();
    ADC1::CR2::CONT::SingleConversion::Set();
    ADC1::CR2::EOCS::SingleConversion::Set();
 
-   // Установка частоты диспретизации в 84 цикла для 18 канала, так как согласно документации напряжение температурного сенсора передается на 18 канал (рисунок 1).
+   // Set 84 cycles sample rate for channel 18
 
    ADC1::SMPR1::SMP18::Cycles84::Set();
 
-   // Установка длины последовательного преобразования на 1
+   // Set lentgh of conversion sequence to 1
 
    ADC1::SQR1::L::Conversions1::Set();
 
-   // Установка первого преобразования на 18 канал
+   // Connect first conversion on Channel 18
 
    ADC1::SQR3::SQ1::Set(18);
-----
 
-.Блок схема температурного сенсора
-image::img1.png[]
+  return 1;
+}
+}
 
-Следующим шагом необходимо получить код с *АЦП* и преобразовать данный код в температуру. В документации присутствует формула, по которой можно расчитать температуру при помощи кода АЦП (рисунок 2).
+constexpr float B1 = (25.0F - 0.76F/0.0025F); // see datacheet (page 226) and calculate B coeficient here ;
+constexpr float K1 = (3.3F/4095.0F)/0.0025F; // see datcheet ((page 226)) and calculate K coeficient here ;
 
-.Описание использования температурного сенсора
-image::img2.png[]
-
-Температура определяется по некоторой прямой
-
-y = k*x + b,
-
-где y - комнатная температура, определенная температурным сенсором; x - код, полученный с *АЦП* (максимум 4096); k - угол наклона прямой; b - смещение по оси y.
-
-Для расчета коэффициентов k и b воспользуемся Datasheet на плату STM32F411Re (рисунок 3).
-
-.Характеристики температурного сенсора
-image::img3.png[]
-
-По данным на рисунке 3 можно расчитать коэффициенты k и b:
-[source,c]
-----
-constexpr float B1 = (25.0F - 0.76F/0.0025F);
-constexpr float K1 = (3.3F/4095.0F)/0.0025F;
-----
-
-Далее выведем температуру в *Terminal IAr'а*:
---
-1. включим *АЦП*;
-2. запустим преобразование на регулярном канале;
-3. дождемся пока преобразование не завершится;
-4. получим код с *АЦП*;
-5. с помощью формулы преобразуем код в температуру и выведем в Terminal.
---
-
-Листинг кода функции *main* представлен ниже:
-[source,c]
-----
 int main(void)
 {
+const char* temper = " ";
+string temp;
+USART2::CR1::TE::Enable::Set();
+
+  const char* ptr = temper;
+
   std::uint32_t data = 0U;
 
-  // Включим ADC1
+  //for Calibrated
+
+  //float temperature_calib = 0.0F;
+  //uint16_t *CAL1 = (uint16_t *)0x1FFF7A2C;
+  //uint16_t *CAL2 = (uint16_t *)0x1FFF7A2E;
+
+  // Enable ADC1
 
   ADC1::CR2::ADON::Set(1);
 
@@ -95,88 +117,44 @@ int main(void)
   {
     //**************ADC*****************
 
-    //Запуск преобразования на регулярном канале
+    //Start conversion Injected channel доделать!
 
     ADC1::CR2::SWSTART::On::Set();
 
-    // дожидаемся пока преобразование не завершится
+    // wait until Conversion is not complete
     while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
     {
     }
 
-    //Получаем код с ADC
-
+    //Get data from ADC
     data = ADC1::DR::Get(); //Get data from ADC;
+    //Convert ADC counts to temperature
 
-    //Преобразуем АЦП код в температуру и выводим в Terminal
-
-    std::cout << "Count: " << data << " Temperature_C: " << static_cast<float>(data) * K1 + B1 << std::endl;
+    //for Calibrated temp
+    //temperature_calib = (((float)(110-30)/(*CAL2-*CAL1)*((float)data - *CAL1))+30);
+    //std::cout << "Count: " << data << " Temperature_C: " << temperature_calib << std::endl ;
 
     temp = std::to_string(static_cast<float>(data) * K1 + B1);
-  }
-}
-----
 
-Результат выполнения представлен на рисунке 4.
+    temp.insert(0, "Now temperature is ");
 
-.Результат выполнения программы (вывод комнатной температуры)
-image::img4.png[]
+    temp.append("               ");
 
-По полученным данным можно сказать, что комнатная температура в районе 23 градусов цельсия.
+    temper = temp.c_str();
 
-Также можно получить более точную температуру, расчитав ее по температурным точкам, которые разработчик платы заложил в код. На рисунке 3 в таблице 72 приведены адреса памяти к которым можно обратиться и получить более точные (откалиброванные) значения с *АЦП*. Преобразуем получение температуры с *АЦП* согласно данным точкам и выведем 2 различных температуры в терминал. Первая температура, не откалиброванная будет обозначаться *Temperature_C*, а откалибровання *Temperature_calib*.
-
-Листинг кода функции *main* представлен ниже:
-[source,c]
-----
-int main(void)
-{
-  std::uint32_t data = 0U;
-
-  // Для откалиброванной температуры
-
-  float Temperature_calib = 0.0F;
-  uint16_t *CAL1 = (uint16_t *)0x1FFF7A2C;
-  uint16_t *CAL2 = (uint16_t *)0x1FFF7A2E;
-
-  // Включим ADC1
-
-  ADC1::CR2::ADON::Set(1);
-
-  for(;;)
-  {
-    //**************ADC*****************
-
-    //Запуск преобразования на регулярном канале
-
-    ADC1::CR2::SWSTART::On::Set();
-
-    // дожидаемся пока преобразование не завершится
-    while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
+    USART2::DR::Write(*ptr);
+    while(USART2::SR::TXE::DataRegisterNotEmpty::IsSet())
     {
     }
+    ptr++;
+    if(*ptr == 0)
+    {
+      ptr = temper;
+      for(int i = 0; i < 2000000; ++i)
+      {
 
-    //Получаем код с ADC
-
-    data = ADC1::DR::Get(); //Get data from ADC;
-
-    //Преобразуем АЦП код в температуру и выводим в Terminal
-
-    std::cout << "Count: " << data << " Temperature_C: " << static_cast<float>(data) * K1 + B1 << std::endl;
-
-    // Для откалиброванных значений
-
-    Temperature_calib = (((float)(110-30)/(*CAL2-*CAL1)*((float)data - *CAL1))+30);
-
-    std::cout << "Count: " << data << " Temperature_calib: " << Temperature_calib << std::endl;
-
+      }
+    }
   }
 }
 ----
-
-Результат выполнения представлен на рисунке 5.
-
-.Результат выполнения программы (вывод комнатной неоткалиброванной и откалиброванной температуры)
-image::img5.png[]
-
-В дальнейшем будем использовать откалиброванную температуру.
