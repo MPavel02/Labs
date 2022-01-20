@@ -1,7 +1,10 @@
 :imagesdir: Images
 :figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
 
 == Лабораторная работа №9
+---
 === Задание
 --
 Настроить и подключить *аналого-цифровой преобразователь (АЦП)* и вывести значения температуры с термометра *АЦП* по инжекторному каналу. Значения температуры отобразить в программе *Terminal* через порт *UART*.
@@ -93,13 +96,13 @@ int main(void)
 
   for(;;)
   {
-    //**************ADC*****************
+    // **************ADC*****************
 
-    //Запуск преобразования на регулярном канале
+    // Запуск преобразования на регулярном канале
 
     ADC1::CR2::SWSTART::On::Set();
 
-    // дожидаемся пока преобразование не завершится
+    //Дожидаемся пока преобразование не завершится
     while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
     {
     }
@@ -160,7 +163,7 @@ int main(void)
 
     data = ADC1::DR::Get(); //Get data from ADC;
 
-    //Преобразуем АЦП код в температуру и выводим в Terminal
+    //Преобразуем код АЦП в температуру и выводим в Terminal
 
     std::cout << "Count: " << data << " Temperature_C: " << static_cast<float>(data) * K1 + B1 << std::endl;
 
@@ -181,7 +184,7 @@ image::img5.png[]
 
 В дальнейшем будем использовать откалиброванную температуру.
 
-=== 2. Вывод температуры с помощью интерфейса USART по порту COM в приложение Terminal
+=== 2. Вывод температуры с помощью интерфейса UART по порту COM в приложение Terminal
 
 Для начаала необходимо разобраться с интерфейсом *UART*.
 
@@ -197,3 +200,431 @@ image::img5.png[]
 
 Программа *Terminal 1.9b* является монитором *COM* порта персонального компьютера. С помощью программы можно легко отправлять и принимать данные через *COM* порт компьютера по протоколу *RS232*. Среди достоинств *Terminal* гибкая настройка программы под различные режимы работы. Интерфейс программы прост и понятен.
 
+Настроим интерфейс *UART*. Листинг кода приведен ниже:
+[source,c]
+----
+  //Включаем внешний 8 МГц генератор
+
+  RCC::CR::HSEON::On::Set();
+
+  while (!RCC::CR::HSERDY::Ready::IsSet())
+  {
+  }
+
+  //Переключаемся с системной частоты на внешний 8 МГц генератор
+
+  RCC::CFGR::SW::Hse::Set();
+
+  while (!RCC::CFGR::SWS::Hse::IsSet())
+  {
+  }
+
+  //Порт А к системе тактирования
+
+  RCC::AHB1ENR::GPIOAEN::Enable::Set();
+
+  //Порт А2 и А3 на альтернативный режим работы
+
+  GPIOA::MODER::MODER2::Alternate::Set();
+  GPIOA::MODER::MODER3::Alternate::Set();
+
+  //Назначение портов А2 и А3 на альтернативную функцию 7
+  GPIOA::AFRL::AFRL2::Af7::Set();  // USART2 Tx
+  GPIOA::AFRL::AFRL3::Af7::Set();  // USART2 Rx
+
+  //Подключаем USART2 к системе тактирования APB1
+  RCC::APB1ENR::USART2EN::Enable::Set();
+
+  USART2::CR1::OVER8::OversamplingBy16::Set();
+  USART2::CR1::M::Data8bits::Set();
+  USART2::CR1::PCE::ParityControlDisable::Set();
+
+  USART2::BRR::Write(8'000'000 / 9600); // 8 МГц с внешнего генератора HSE
+  USART2::CR1::UE::Enable::Set();
+----
+
+Затем необходимо настроить программу *Terminal*. Подключим плату к портам *UART* и *USB* на компьютере. В программе выберем новый порт, который обнаружила программа в нашем случае *COM4* (рисунок 6).
+
+.Поля настройки программы *Terminal v 1.9*
+image::img6.png[]
+
+Затем после запуска программы необходимо будет выбрать нужный порт и нажать кнопку *Connect*.
+
+Теперь необходимо разобраться с выводом температуры по интерфейсу *UART*.
+Листинг когда функции *main* с выводом температуры по интерфейсу *UART* и фукнции *rnd*, которая преобразует *float* в *string* с заданной точностью представлен ниже:
+[source,c]
+----
+std::string rnd(float val, int scale)
+{
+    std::ostringstream oss;
+
+    oss << std::fixed << std::setfill ('0') << std::setprecision (scale) << val;
+
+    return oss.str();
+}
+
+int main(void)
+{
+  const char* temper = " ";
+  string temp;
+  USART2::CR1::TE::Enable::Set();
+
+  const char* ptr = temper;
+
+  std::uint32_t data = 0U;
+
+  float Temperature_calib = 0.0F;
+  uint16_t *CAL1 = (uint16_t *)0x1FFF7A2C;
+  uint16_t *CAL2 = (uint16_t *)0x1FFF7A2E;
+
+  // Включим ADC1
+
+  ADC1::CR2::ADON::Set(1);
+
+  for(;;)
+  {
+    // **************ADC*****************
+
+    // Запуск преобразования на регулярном канале
+
+    ADC1::CR2::SWSTART::On::Set();
+
+    // Дождемся пока преобразование не завершится
+    while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
+    {
+    }
+
+    // Получаем код с ADC
+    data = ADC1::DR::Get(); //Get data from ADC;
+
+    // Преобразуем код АЦП в температуру
+
+    Temperature_calib = (((float)(110-30)/(*CAL2-*CAL1)*((float)data - *CAL1))+30);
+
+    // С помощью функции rnd преобразуем температуру типа float к типу string с 2 знаками после запятой
+
+    temp = rnd(Temperature_calib, 2);
+
+    // Перед значением температуры добавляем слово Now temperature is
+
+    temp.insert(0, "Now temperature is ");
+
+    // Добавляем пробел после значения температуры
+
+    temp.append("            ");
+
+    // Приводим temp к типу const char* с помощью конструкции .c_str()
+
+    temper = temp.c_str();
+
+    // Записываем в регистр UART указатель *ptr
+
+    USART2::DR::Write(*ptr);
+
+    // Дожидаемся пока DataRegister не станет пустым
+
+    while(USART2::SR::TXE::DataRegisterNotEmpty::IsSet())
+    {
+    }
+
+    ptr++;
+    if(*ptr == 0)
+    {
+      ptr = temper;
+
+    // Задержка
+
+      for(int i = 0; i < 2000000; ++i)
+      {
+
+      }
+    }
+  }
+}
+----
+
+Полный листинг кода программы представлен ниже:
+[source,c]
+----
+#include "adc1registers.hpp" //for ADC1
+#include "adccommonregisters.hpp" //for ADCCommon
+#include "gpioaregisters.hpp"  //for Gpioa
+#include "gpiocregisters.hpp"  //for Gpioc
+#include "rccregisters.hpp"    //for RCC
+#include "nvicregisters.hpp"   //for NVIC
+#include "usart2registers.hpp" //for USART2
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <string>
+#include <iomanip>
+
+using namespace std ;
+
+extern "C"
+{
+int __low_level_init(void)
+{
+  //Включаем внешний 8 МГц генератор
+
+  RCC::CR::HSEON::On::Set();
+
+  while (!RCC::CR::HSERDY::Ready::IsSet())
+  {
+  }
+
+  //Переключаемся с системной частоты на внешний 8 МГц генератор
+
+  RCC::CFGR::SW::Hse::Set();
+
+  while (!RCC::CFGR::SWS::Hse::IsSet())
+  {
+  }
+
+  // Часть UART
+
+  //Порт А к системе тактирования
+
+  RCC::AHB1ENR::GPIOAEN::Enable::Set();
+
+  //Порт А2 и А3 на альтернативный режим работы
+
+  GPIOA::MODER::MODER2::Alternate::Set();
+  GPIOA::MODER::MODER3::Alternate::Set();
+
+  //Назначение портов А2 и А3 на альтернативную функцию 7
+  GPIOA::AFRL::AFRL2::Af7::Set();  // USART2 Tx
+  GPIOA::AFRL::AFRL3::Af7::Set();  // USART2 Rx
+
+  //Подключаем USART2 к системе тактирования APB1
+  RCC::APB1ENR::USART2EN::Enable::Set();
+
+  USART2::CR1::OVER8::OversamplingBy16::Set();
+  USART2::CR1::M::Data8bits::Set();
+  USART2::CR1::PCE::ParityControlDisable::Set();
+
+  USART2::BRR::Write(8'000'000 / 9600); // 8 МГц с внешнего генератора HSE
+  USART2::CR1::UE::Enable::Set();
+
+  // Часть АЦП
+
+   //********* ADC1
+   //Переключение на частоту ADC1
+
+   RCC::APB2ENR::ADC1EN::Enable::Set();
+
+   //Переключение на температурный сенсор
+
+   ADC_Common::CCR::TSVREFE::Enable::Set();
+
+   //Установка режима одиночного преобразования
+
+   ADC1::CR1::RES::Bits12::Set();
+   ADC1::CR2::CONT::SingleConversion::Set();
+   ADC1::CR2::EOCS::SingleConversion::Set();
+
+   // Установка частоты диспретизации в 84 цикла для 18 канала, так как согласно документации напряжение температурного сенсора передается на 18 канал (рисунок 1).
+
+   ADC1::SMPR1::SMP18::Cycles84::Set();
+
+   // Установка длины последовательного преобразования на 1
+
+   ADC1::SQR1::L::Conversions1::Set();
+
+   // Установка первого преобразования на 18 канал
+
+   ADC1::SQR3::SQ1::Set(18);
+
+  return 1;
+}
+}
+
+std::string rnd(float val, int scale)
+{
+    std::ostringstream oss;
+
+    oss << std::fixed << std::setfill ('0') << std::setprecision (scale) << val;
+
+    return oss.str();
+}
+
+int main(void)
+{
+  const char* temper = " ";
+  string temp;
+  USART2::CR1::TE::Enable::Set();
+
+  const char* ptr = temper;
+
+  std::uint32_t data = 0U;
+
+  float Temperature_calib = 0.0F;
+  uint16_t *CAL1 = (uint16_t *)0x1FFF7A2C;
+  uint16_t *CAL2 = (uint16_t *)0x1FFF7A2E;
+
+  // Включим ADC1
+
+  ADC1::CR2::ADON::Set(1);
+
+  for(;;)
+  {
+    // **************ADC*****************
+
+    // Запуск преобразования на регулярном канале
+
+    ADC1::CR2::SWSTART::On::Set();
+
+    // Дождемся пока преобразование не завершится
+    while(ADC1::SR::EOC::ConversionNotComplete::IsSet())
+    {
+    }
+
+    // Получаем код с ADC
+    data = ADC1::DR::Get(); //Get data from ADC;
+
+    // Преобразуем код АЦП в температуру
+
+    Temperature_calib = (((float)(110-30)/(*CAL2-*CAL1)*((float)data - *CAL1))+30);
+
+    // С помощью функции rnd преобразуем температуру типа float к типу string с 2 знаками после запятой
+
+    temp = rnd(Temperature_calib, 2);
+
+    // Перед значением температуры добавляем слово Now temperature is
+
+    temp.insert(0, "Now temperature is ");
+
+    // Добавляем пробел после значения температуры
+
+    temp.append("            ");
+
+    // Приводим temp к типу const char* с помощью конструкции .c_str()
+
+    temper = temp.c_str();
+
+    // Записываем в регистр UART указатель *ptr
+
+    USART2::DR::Write(*ptr);
+
+    // Дожидаемся пока DataRegister не станет пустым
+
+    while(USART2::SR::TXE::DataRegisterNotEmpty::IsSet())
+    {
+    }
+
+    ptr++;
+    if(*ptr == 0)
+    {
+      ptr = temper;
+
+    // Задержка
+
+    for(int i = 0; i < 2000000; ++i)
+    {
+
+    }
+  }
+}
+----
+
+Результат программы представлен на рисунке 7.
+
+.Значения температуры в программе *Terminal v 1.9*
+image::img7.png[]
+
+=== 3. Обработка значений температурного сенсора по инжекторному каналу
+
+Настроим АЦП на инжекторный канал, согласно документации. Код представлен ниже.
+[source,c]
+----
+   //********* ADC1
+   //Переключение на частоту ADC1
+
+   RCC::APB2ENR::ADC1EN::Enable::Set();
+
+   //Переключение на температурный сенсор
+
+   ADC_Common::CCR::TSVREFE::Enable::Set();
+
+   //Установка режима одиночного преобразования
+
+   ADC1::CR1::RES::Bits12::Set();
+   ADC1::CR2::CONT::SingleConversion::Set();
+   ADC1::CR2::EOCS::SingleConversion::Set();
+
+   // Установка частоты диспретизации в 84 цикла для 18 канала, так как согласно документации напряжение температурного сенсора передается на 18 канал (рисунок 1).
+
+   ADC1::SMPR1::SMP18::Cycles84::Set();
+
+   // Установка длины последовательного преобразования на 1
+
+   ADC1::JSQR::JL::Conversion1::Set();
+
+   // Установка первого преобразования на 18 канал
+
+   ADC1::JSQR::JSQ1::Set(18);
+----
+
+Включим *АЦП* и запустим преобразование, а затем выведем значение в *Terminal IAr'а*, листинг кода функции *main* и *rnd* представлен ниже.
+[source,c]
+----
+std::string rnd(float val, int scale)
+{
+    std::ostringstream oss;
+
+    oss << std::fixed << std::setfill ('0') << std::setprecision (scale) << val;
+
+    return oss.str();
+}
+
+int main(void)
+{
+  const char* temper = " ";
+  string temp;
+  USART2::CR1::TE::Enable::Set();
+
+  const char* ptr = temper;
+
+  std::uint32_t data = 0U;
+
+  //for Calibrated
+
+  float Temperature_calib = 0.0F;
+  uint16_t *CAL1 = (uint16_t *)0x1FFF7A2C;
+  uint16_t *CAL2 = (uint16_t *)0x1FFF7A2E;
+
+  // Enable ADC1
+
+  ADC1::CR2::ADON::Set(1);
+
+  for(;;)
+  {
+    // **************ADC*****************
+
+    // Запуск преобразования на инжекторном канале
+
+    ADC1::CR2::JSWSTART::On::Set();
+
+    // Дождемся пока преобразование не завершится
+    while(ADC1::SR::JEOC::ConversionNotComplete::IsSet())
+    {
+    }
+
+    // Получаем код с АЦП
+    data = ADC1::JDR1::Get(); //Get data from ADC;
+
+    // Преобразуем код АЦП в температуру
+
+    Temperature_calib = (((float)(110-30)/(*CAL2-*CAL1)*((float)data - *CAL1))+30);
+
+    temp = rnd(Temperature_calib, 2);
+
+    std::cout << "Count: " << data << " Temperature_calib: " << temp << std::endl;
+----
+
+Результат работы программы представлен ниже (рисунок 8):
+
+.Результат работы программы на инжекторном канале
+image::img8.png[]
+
+Можно сказать, что инжекторный канал настроен неверно, но ошибку найти не удалось.
