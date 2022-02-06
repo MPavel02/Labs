@@ -1,0 +1,86 @@
+:imagesdir: Images
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Лабораторная работа №10
+---
+=== Задание
+--
+С помощью прерываний по интерфейсу USART передать фразу "Hello World!" в приложение Terminal. Также необходимо с помощью прерываний и таймеров TIM2 и TIM3 включать и выключать светодиоды для таймера TIM2 раз в полсекунды, а для таймера TIM3 раз в секунду.
+--
+=== 1. Включение светодиодов
+Для начала дадим определение прерываниям.
+
+*Прерывание* (англ. interrupt) — сигнал от программного или аппаратного обеспечения, сообщающий процессору о наступлении какого-либо события, требующего немедленного внимания. *Прерывание* извещает процессор о наступлении высокоприоритетного события, требующего прерывания текущего кода, выполняемого процессором.
+
+Для настройки таймера необходимо подключить библиотеки для регистров таймера и прерываний.
+
+Библиотеки, которые необходимо подключить для таймера *TIM2* и *TIM3* приведены ниже.
+[source,c]
+----
+#include "gpiocregisters.hpp"   //for Gpioc
+#include "gpioaregisters.hpp"   //for Gpioa
+#include "rccregisters.hpp"     //for RCC
+#include "tim2registers.hpp"    //for TIM2
+#include "tim3registers.hpp"    //for TIM3
+#include "nvicregisters.hpp"    //for NVIC
+----
+
+Необходимо настроить плату на (в нашем случае) внешний тактовый генератор (8 МГц) и подать тактирование на *GPIOC* и настроить необходимые порты (8-ой и 5-ый) на выход. Листинг кода приведен ниже.
+
+[source,c]
+----
+//Switch on external 8 MHz oscillator
+RCC::CR::HSEON::On::Set() ;
+while (!RCC::CR::HSERDY::Ready::IsSet())
+{
+
+}
+//Switch system clock on external oscillator
+RCC::CFGR::SW::Hse::Set() ;
+while (!RCC::CFGR::SWS::Hse::IsSet())
+{
+
+}
+
+RCC::AHB1ENR::GPIOCEN::Enable::Set(); //Подали тактирование на порт GPIOC
+GPIOC::MODER::MODER8::Output::Set();  //Настроили порт PORTC.8 на выход
+GPIOC::MODER::MODER5::Output::Set();  //Настроили порт PORTC.5 на выход
+----
+
+==== 1.1 Прерывание по таймеру TIM2
+
+Настроим таймер *TIM2*.
+
+Согласно регистру *RCC* переключение на частоты таймера *TIM2* происходит в 0 бите (рисунок 1).
+
+.Регистр RCC_APB1ENR
+image::img1.png[]
+
+Далее записываем в регистр *TIM2_PSC* значение тактовой частоты счетчика с помощью переменной *TimerPrescaler*, которая была определена раньше.
+
+Листинг кода определения тактовой частоты.
+[source,c]
+----
+constexpr auto SystemClock = 8'000'000U;
+constexpr auto TimerClock = 1'000U;
+constexpr auto TimerPrescaler = SystemClock / TimerClock;
+----
+
+Листинг кода настройки таймера *TIM2* приведен ниже.
+[source,c]
+----
+//Настройка таймера 2
+RCC::APB1ENR::TIM2EN::Enable::Set();
+TIM2::PSC::Write(TimerPrescaler);
+
+//Установка нижнего и верхнего предела отсчета таймера, то есть он считает от 0 до 1000
+TIM2::ARR::Write(1000);
+TIM2::CNT::Write(0);
+
+//Настройка прерывания
+NVIC::ISER0::Write(1 << 28U);    //Разрешить глобальное прерывание
+TIM2::DIER::UIE::Enable::Set();
+TIM2::CR1::CEN::Enable::Set();
+----
