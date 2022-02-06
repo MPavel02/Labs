@@ -313,3 +313,50 @@ private:
   inline static size_t messageLenght = 0U;
 };
 ----
+
+Затем необходимо описать библиотеку для *USART* в файле *main.cpp*.
+[source,c]
+----
+#include "gpiocregisters.hpp"   //for Gpioc
+#include "gpioaregisters.hpp"   //for Gpioa
+#include "rccregisters.hpp"     //for RCC
+#include "tim2registers.hpp"    //for TIM2
+#include "tim3registers.hpp"    //for TIM3
+#include "nvicregisters.hpp"    //for NVIC
+#include "usart2registers.hpp"  //for USART2
+#include <string> //for std::string
+#include "messagetransmitter.h" //for MessageTransmitter
+----
+
+Также в файле *main.c* необходимо настроить интерфейс *USART*. Согласно таблице прерываний интерфейс *USART2* находится на позиции 38, то тут уже используется регистр *NVIC_ISER1*. Вся остальная настройка производится также как и в прошлой лабораторной работе.
+
+Листинг настройки *USART2* приведен ниже.
+[source,c]
+----
+//Настройка USART2
+
+//Порт А к системе тактирования
+
+RCC::AHB1ENR::GPIOAEN::Enable::Set();
+
+//Порт А2 и А3 на альтернативный режим работы
+
+GPIOA::MODER::MODER2::Alternate::Set();
+GPIOA::MODER::MODER3::Alternate::Set();
+
+//Назначение портов А2 и А3 на альтернативную функцию 7
+GPIOA::AFRL::AFRL2::Af7::Set();  // USART2 Tx
+GPIOA::AFRL::AFRL3::Af7::Set();  // USART2 Rx
+
+//Подключаем USART2 к системе тактирования APB1
+RCC::APB1ENR::USART2EN::Enable::Set();
+
+USART2::CR1::OVER8::OversamplingBy8::Set();
+USART2::CR1::M::Data8bits::Set();
+USART2::CR1::PCE::ParityControlDisable::Set();
+
+USART2::BRR::Write(8'000'000 / 9600); // 8 МГц с внешнего генератора HSE
+USART2::CR1::UE::Enable::Set();
+
+NVIC::ISER1::Write(1 << 6U);    //Разрешить глобальное прерывание
+----
