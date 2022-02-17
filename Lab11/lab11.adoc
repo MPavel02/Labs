@@ -266,6 +266,7 @@ int __low_level_init(void)
 OsWrapper::MailBox<int, 1> buttonMailBox;
 ButtonTask buttonTask(buttonMailBox);
 LedTask ledTask(buttonMailBox);
+MyFirstTask myFirstTask;
 
 int main()
 {
