@@ -3,7 +3,7 @@
 :toc:
 :toc-title: ОГЛАВЛЕНИЕ:
 
-== Лабораторная работа №10
+== Лабораторная работа №11
 === Задание
 --
 С помощью *операционных систем реального времени (ОСРВ)* реализовать задачи, которые будут моргать светодиодами (по кнопке и без нее).
@@ -265,6 +265,7 @@ int __low_level_init(void)
 OsWrapper::MailBox<int, 1> buttonMailBox;
 ButtonTask buttonTask(buttonMailBox);
 LedTask ledTask(buttonMailBox);
+MyFirstTask myFirstTask;
 
 int main()
 {
