@@ -164,7 +164,6 @@ void ButtonTask::Execute()
 #pragma once
 
 #include "thread.hpp" //for Thread
-#include "event.hpp"  //for Event
 #include "mailbox.hpp" //for MailBox
 
 class LedTask: public OsWrapper::Thread<100>
