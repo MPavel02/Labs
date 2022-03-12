@@ -1,0 +1,28 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Архитектура
+--
+Авторы работы: Нефедова А.В., Маскаль П.И. гр. КЭ-413.
+--
+=== 1. Диаграмма классов
+
+image::img1.png[]
+
+=== 2. Диаграммы последовательности
+
+==== 2.1 VoltageMeasuringTask
+
+image::img2.png[]
+
+==== 2.2 SendVoltageTask
+
+image::img3.png[]
+
+
+
+
+
