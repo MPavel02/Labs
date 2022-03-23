@@ -1,0 +1,93 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Реализация класса StringConverter
+---
+=== 1. Архитектура класса в StarUML
+
+Данный класс отвечает за преобразование значения напряжения в строку. В конструктор поступает количество знаков после запятой в преобразованной переменной. В функцию *_toString_* поступает значение напряжения в формате *_float_*. После преобразования получается переменная *_string_* в которой лежит значение напряжения.
+
+Представим архитектуру класса в StarUML (рисунок 1).
+
+.Архитектура класса StringConverter
+image::img1.png[]
+
+=== 2. Программная реализация класса
+
+Код файла *_stringconverter.h_* представлен ниже.
+
+Листинг кода *_stringconverter.h_*:
+[source,c]
+----
+#pragma once
+#include <cstdint>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <string>
+
+using namespace std;
+
+class StringConverter
+{
+public:
+  constexpr StringConverter(uint32_t count): scale(count)
+  {
+  }
+  string ToString(float value);
+private:
+  const uint32_t scale = 0U;
+};
+----
+
+Код файла *_stringconverter.cpp_* представлен ниже.
+
+Листинг кода *_stringconverter.cpp_*:
+[source,c]
+----
+#include "stringconverter.h"
+
+string StringConverter::ToString(float value)
+{
+  std::ostringstream oss;
+  oss << std::fixed << std::setfill ('0') << std::setprecision (scale) << value;
+  return oss.str();
+}
+----
+
+Код файла *_main.cpp_* представлен ниже.
+
+Листинг кода *_main.cpp_*:
+[source,c]
+----
+#include "stringconverter.h"    //for StringConverter
+#include <iostream>
+
+using namespace std;
+
+StringConverter convert(3);
+
+int main()
+{
+  float V = 2.744932;
+
+  cout << V << endl;
+
+  cout << convert.ToString(V) << endl;
+
+  return 0;
+}
+----
+
+На рисунке 2 представлен результат работы кода.
+
+.Результат работы кода
+image::img2.png[]
+
+
+
+
+
