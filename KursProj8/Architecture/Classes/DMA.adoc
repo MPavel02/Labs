@@ -1,0 +1,110 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Реализация класса DMA
+---
+=== 1. Архитектура класса в StarUML
+
+Данный класс отвечает за получение кода с АЦП не используя процессор.
+
+Представим архитектуру класса в StarUML (рисунок 1).
+
+.Архитектура класса StringConverter
+image::img4.png[]
+
+=== 2. Программная реализация класса
+
+Код файла *_dma.h_* представлен ниже.
+
+Листинг кода *_dma.h_*:
+[source,c]
+----
+#pragma once
+#include <cstdint>
+#include "adc.h"
+#include "dma2registers.hpp"
+
+class DMA
+{
+public:
+  void Setup();
+};
+----
+
+Код файла *_dma.cpp_* представлен ниже.
+
+Листинг кода *_dma.cpp_*:
+[source,c]
+----
+#include "dma.h"
+
+template<typename DMA, typename ADCN, typename S, uint32_t chNum>
+void Setup()
+{
+  //Подача тактирования на DMA2
+
+  RCC::AHB1::DMAEN::Enable::Set();
+
+  //Выбор канала подачи тактирования
+
+  DMA::SCR::CHSEL::Set(chNum);
+
+  //Из периферии в память
+
+  DMA::SCR::DIR::Set(0);
+
+  //Копируем данные из АЦП
+
+  DMA::SPAR::PAR::Set(ADCN::DR::Address);
+
+  //Копируем адрес в буфер
+
+  DMA::SM0AR::M0A::Set(static_cast<uint32_t>(&ADC::buffer));
+
+  //Не изменяя адрес копируем из ADC1
+
+  DMA::SCR::PINC::Set(0);
+
+  //Изменяем адрес памяти чтобы каждое значение записывалось
+  //в след. элемент массива
+
+  DMA::SCR::MINC::Set(1);
+
+  //Размер данных буфера 16 бит
+
+  DMA::SCR::MSIZE::Set(1);
+
+  //Включение циклического режима
+
+  DMA::SCR::CIRC::Set(1);
+
+  //Приоритет высокий
+
+  DMA::SCR::PL::Set(2);
+
+  //Отключаем FIFO
+
+  DMA::SFCR::FEIE::Set(0);
+
+  //Размер данных периферии
+
+  DMA::SCR::PSIZE::Set(1);
+
+  //Пакетная пересылка по памяти и по периферии в одиночный Single
+
+  DMA::SCR::MBURST::SingleTransfer::Set();
+  DMA::SCR::PBURST::SingleTransfer::Set();
+
+  //Включаем DMA
+
+  DMA::SCR::EN::Enable::Set();
+}
+----
+
+
+
+
+
