@@ -1,0 +1,60 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Реализация класса Filter
+---
+=== 1. Архитектура класса в StarUML
+
+Данный класс отвечает за фильтрацию сигнала с использованием БИХ-фильтр (с бесконечной импульсной характеристикой).
+
+Представим архитектуру класса в StarUML (рисунок 1).
+
+.Архитектура класса StringConverter
+image::img5.png[]
+
+=== 2. Программная реализация класса
+
+Код файла *_filter.h_* представлен ниже.
+
+Листинг кода *_filter.h_*:
+[source,c]
+----
+#pragma once
+#include <cmath>         //for Exp
+#include <cstdint>
+
+class Filter
+{
+public:
+  uint32_t FiltValue(uint32_t Value);
+private:
+  const float dt = 100.0F;
+  const float RC = 100.0F;
+  uint32_t filtValue = 0.0F;
+};
+----
+
+Здесь *dt* выбрано 100, так как по заданию мы определились взять 100 ms.
+*RC* взято 100 для лучшей обработки сигнала, если бы было больше, то сигнал бы обрабатывался дольше и как следствие могли быть ошибки.
+
+Код файла *_filter.cpp_* представлен ниже.
+
+Листинг кода *_filter.cpp_*:
+[source,c]
+----
+#include "filter.h"
+
+uint32_t Filter::FiltValue(uint32_t Value)
+{
+  const float t = static_cast<float>(1.0F - exp(-(dt)/(RC)));
+
+  filtValue = static_cast<uint32_t>(filtValue + (Value - filtValue) * t);
+
+  return filtValue;
+}
+----
+
+Здесь отношение *dt* к *RC* - постоянная времени.
