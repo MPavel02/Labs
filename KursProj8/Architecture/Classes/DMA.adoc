@@ -25,7 +25,8 @@ image::img4.png[]
 #pragma once
 #include <cstdint>
 #include "adc.h"
-#include "dma2registers.hpp"
+#include "dma2registers.hpp" //for DMA2
+#include "rccregisters.hpp"  //for RCC
 
 class DMA
 {
@@ -46,7 +47,7 @@ void Setup()
 {
   //Подача тактирования на DMA2
 
-  RCC::AHB1::DMAEN::Enable::Set();
+  RCC::AHB1::DMA2EN::Enable::Set();
 
   //Выбор канала подачи тактирования
 
@@ -103,8 +104,3 @@ void Setup()
   DMA::SCR::EN::Enable::Set();
 }
 ----
-
-
-
-
-
