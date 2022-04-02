@@ -24,9 +24,9 @@ image::img4.png[]
 ----
 #pragma once
 #include <cstdint>
-#include "adc.h"
-#include "dma2registers.hpp" //for DMA2
-#include "rccregisters.hpp"  //for RCC
+#include "rccregisters.hpp"     //for RCC
+#include "dma2registers.hpp"    //for DMA2
+#include "adc.h"                //for ADC
 
 class DMA
 {
@@ -42,65 +42,68 @@ public:
 ----
 #include "dma.h"
 
-template<typename DMA, typename ADCN, typename S, uint32_t chNum>
-void Setup()
+void DMA::Setup()
 {
   //Подача тактирования на DMA2
 
-  RCC::AHB1::DMA2EN::Enable::Set();
+  RCC::AHB1ENR::DMA2EN::Enable::Set();
 
   //Выбор канала подачи тактирования
 
-  DMA::SCR::CHSEL::Set(chNum);
+  DMA2::S0CR::CHSEL::Set(0);
 
   //Из периферии в память
 
-  DMA::SCR::DIR::Set(0);
+  DMA2::S0CR::DIR::Set(0);
+
+  //Количество выполняемых транзакций
+
+  DMA2::S0NDTR::NDT::Set(1);
 
   //Копируем данные из АЦП
 
-  DMA::SPAR::PAR::Set(ADCN::DR::Address);
+  DMA2::S0PAR::Set(ADC1::DR::Address);
 
   //Копируем адрес в буфер
 
-  DMA::SM0AR::M0A::Set(static_cast<uint32_t>(&ADC::buffer));
+  DMA2::S0M0AR::Set(reinterpret_cast<uint32_t>(&ADC::buffer));
 
   //Не изменяя адрес копируем из ADC1
 
-  DMA::SCR::PINC::Set(0);
+  DMA2::S0CR::PINC::Set(0);
 
   //Изменяем адрес памяти чтобы каждое значение записывалось
   //в след. элемент массива
 
-  DMA::SCR::MINC::Set(1);
+  DMA2::S0CR::MINC::Set(1);
 
   //Размер данных буфера 16 бит
 
-  DMA::SCR::MSIZE::Set(1);
+  DMA2::S0CR::MSIZE::Set(1);
 
   //Включение циклического режима
 
-  DMA::SCR::CIRC::Set(1);
+  DMA2::S0CR::CIRC::Set(1);
 
   //Приоритет высокий
 
-  DMA::SCR::PL::Set(2);
+  DMA2::S0CR::PL::Set(2);
 
   //Отключаем FIFO
 
-  DMA::SFCR::FEIE::Set(0);
+  DMA2::S0FCR::FEIE::Set(0);
 
   //Размер данных периферии
 
-  DMA::SCR::PSIZE::Set(1);
+  DMA2::S0CR::PSIZE::Set(1);
 
   //Пакетная пересылка по памяти и по периферии в одиночный Single
 
-  DMA::SCR::MBURST::SingleTransfer::Set();
-  DMA::SCR::PBURST::SingleTransfer::Set();
+  DMA2::S0CR::MBURST::Set(0);
+  DMA2::S0CR::PBURST::Set(0);
 
-  //Включаем DMA
+  //Включаем поток
 
-  DMA::SCR::EN::Enable::Set();
+  DMA2::S0CR::EN::Set(1);
 }
 ----
