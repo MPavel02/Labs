@@ -12,7 +12,7 @@
 
 Представим архитектуру класса в StarUML (рисунок 1).
 
-.Архитектура класса StringConverter
+.Архитектура класса Filter
 image::img5.png[]
 
 === 2. Программная реализация класса
@@ -29,11 +29,11 @@ image::img5.png[]
 class Filter
 {
 public:
-  uint32_t FiltValue(uint32_t Value);
+  float FiltValue(float Value);
 private:
   const float dt = 100.0F;
   const float RC = 100.0F;
-  uint32_t filtValue = 0.0F;
+  float filtValue = 0.0F;
 };
 ----
 
@@ -47,11 +47,11 @@ private:
 ----
 #include "filter.h"
 
-uint32_t Filter::FiltValue(uint32_t Value)
+float Filter::FiltValue(float Value)
 {
   const float t = static_cast<float>(1.0F - exp(-(dt)/(RC)));
 
-  filtValue = static_cast<uint32_t>(filtValue + (Value - filtValue) * t);
+  filtValue = static_cast<float>(filtValue + (Value - filtValue) * t);
 
   return filtValue;
 }
