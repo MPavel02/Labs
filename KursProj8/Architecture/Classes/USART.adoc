@@ -1,0 +1,66 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Реализация класса DMA
+---
+=== 1. Архитектура класса в StarUML
+
+Данный класс отвечает за настройку USART. В метод Setup передается значение скорости передачи и частоты генератора (*_HSE or HSI_*).
+
+Представим архитектуру класса в StarUML (рисунок 1).
+
+.Архитектура класса USART
+image::img3.png[]
+
+=== 2. Программная реализация класса
+
+Код файла *_dma.h_* представлен ниже.
+
+Листинг кода *_dma.h_*:
+[source,c]
+----
+#pragma once
+#include <cstdint>
+#include "gpioaregisters.hpp"   //for GPIOA
+#include "rccregisters.hpp"     //for RCC
+#include "usart2registers.hpp"  //for USART2
+
+class USART
+{
+public:
+  void Setup(uint32_t speed, uint32_t fgen);
+};
+----
+
+Код файла *_dma.cpp_* представлен ниже.
+
+Листинг кода *_dma.cpp_*:
+[source,c]
+----
+#include "usart.h"      //for USART
+
+void USART::Setup(uint32_t speed, uint32_t fgen)
+{
+    //Порт А2 и А3 на альтернативный режим работы
+
+    GPIOA::MODER::MODER2::Alternate::Set();
+    GPIOA::MODER::MODER3::Alternate::Set();
+
+    //Назначение портов А2 и А3 на альтернативную функцию 7
+    GPIOA::AFRL::AFRL2::Af7::Set();  // USART2 Tx
+    GPIOA::AFRL::AFRL3::Af7::Set();  // USART2 Rx
+
+    //Подключаем USART2 к системе тактирования APB1
+    RCC::APB1ENR::USART2EN::Enable::Set();
+
+    USART2::CR1::OVER8::OversamplingBy16::Set();
+    USART2::CR1::M::Data8bits::Set();
+    USART2::CR1::PCE::ParityControlDisable::Set();
+
+    USART2::BRR::Write(fgen / speed); // fgen МГц с внешнего генератора HSE
+    USART2::CR1::UE::Enable::Set();
+}
+----
