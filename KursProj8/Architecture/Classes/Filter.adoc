@@ -29,16 +29,15 @@ image::img5.png[]
 class Filter
 {
 public:
+  void Tau(const float dt, const float RC);
   float FiltValue(float Value);
 private:
-  const float dt = 100.0F;
-  const float RC = 100.0F;
   float filtValue = 0.0F;
+  float t = 0.0F;
 };
 ----
 
 Здесь *dt* выбрано 100, так как по заданию мы определились взять 100 ms.
-*RC* взято 100 для лучшей обработки сигнала, если бы было больше, то сигнал бы обрабатывался дольше и как следствие могли быть ошибки.
 
 Код файла *_filter.cpp_* представлен ниже.
 
@@ -47,14 +46,17 @@ private:
 ----
 #include "filter.h"
 
+void Filter::Tau(const float dt, const float RC)
+{
+  t = static_cast<float>(1.0F - exp(-(dt)/(RC)));
+}
+
 float Filter::FiltValue(float Value)
 {
-  const float t = static_cast<float>(1.0F - exp(-(dt)/(RC)));
-
-  filtValue = static_cast<float>(filtValue + (Value - filtValue) * t);
-
-  return filtValue;
+  return filtValue + (Value - filtValue) * t;
 }
+
+
 ----
 
 Здесь отношение *dt* к *RC* - постоянная времени.
