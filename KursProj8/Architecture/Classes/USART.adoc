@@ -12,7 +12,10 @@
 
 Представим архитектуру класса в StarUML (рисунок 1).
 
-image::gif.gif[]
+image::gif1.gif[]
+
+
+
 
 .Архитектура класса USART
 image::img3.png[]
