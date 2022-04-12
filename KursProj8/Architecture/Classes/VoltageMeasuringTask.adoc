@@ -1,0 +1,86 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Реализация класса VoltageMeasuringTask
+---
+=== 1. Архитектура класса в StarUML
+
+Данный класс отвечает за расчет значения напряжения и затем отправляет его в CalcLight, на основе его зажигаются светодиоды.
+
+Представим архитектуру класса в StarUML (рисунок 1).
+
+.Архитектура класса VoltageMeasuringTask
+image::img6.png[]
+
+=== 2. Программная реализация класса
+
+Код файла *_voltagemeasuringtask.h_* представлен ниже.
+
+Листинг кода *_voltagemeasuringtask.h_*:
+[source,c]
+----
+#pragma once
+#include <string>
+#include <iostream>
+#include "thread.hpp"                   //for Thread
+#include "mailbox.hpp"                  //for MailBox
+#include "filter.h"                     //for Filter
+#include "calclight.h"                  //for CalcLight
+#include "voltage.h"                    //for Voltage
+#include "dma.h"                        //for DMA
+#include "adc.h"                        //for ADC
+#include "indicate.h"                   //for Indicate
+#include "stringconverter.h"            //for StringConverter
+
+template<auto& TLeds>
+class VoltageMeasuringTask: public OsWrapper::Thread<100>
+{
+public:
+  VoltageMeasuringTask(Filter& filter, CalcLight& calc, Voltage& voltage, StringConverter& conv, Indicate<TLeds>& indic, ADC& adck, DMA& dmak)
+    :filt(filter), calclight(calc), volt(voltage), convert(conv), indicate(indic), adc(adck), dma(dmak)
+  {
+  }
+  void Execute() override;
+  void Measure();
+  string voltage = "";
+
+private:
+  StringConverter& convert;
+  Filter& filt;
+  CalcLight& calclight;
+  Voltage& volt;
+  Indicate<TLeds>& indicate;
+  DMA& dma;
+  ADC& adc;
+};
+
+template<auto& TLeds>
+void VoltageMeasuringTask<TLeds>::Measure()
+{
+  voltage = convert.ToString(filt.FiltValue(volt.ConvertToVolt(adc.buffer)));
+  indicate.light(calclight.Calculate(filt.FiltValue(volt.ConvertToVolt(adc.buffer))));
+}
+
+template<auto& TLeds>
+void VoltageMeasuringTask<TLeds>::Execute()
+{
+  // Настройка периферии ADC и DMA
+
+  adc.Setup();
+  dma.Setup();
+
+  // Запускаем преобразование на регулярном канале
+
+  ADC1::CR2::SWSTART::Set(1);
+
+  for(;;)
+  {
+    Measure();
+
+    Sleep(100ms);
+  }
+}
+----
