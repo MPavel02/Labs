@@ -1,0 +1,85 @@
+:imagesdir: Images
+:table-caption: Таблица
+:figure-caption: Рисунок
+:toc:
+:toc-title: ОГЛАВЛЕНИЕ:
+
+== Реализация класса SendVoltageTask
+---
+=== 1. Архитектура класса в StarUML
+
+Данный класс отвечает за пересылку напряжения по блютузу в телефон.
+
+Представим архитектуру класса в StarUML (рисунок 1).
+
+.Архитектура класса SendVoltageTask
+image::img7.png[]
+
+=== 2. Программная реализация класса
+
+Код файла *_sendvoltagetask.h_* представлен ниже.
+
+Листинг кода *_sendvoltagetask.h_*:
+[source,c]
+----
+#pragma once
+#include <string>
+#include "thread.hpp"                   //for Thread
+#include "voltagemeasuringtask.h"       //for VoltageMeasuringTask
+#include "usart.h"                      //for USART
+
+template<typename TUSART, auto& TLeds, typename Port>
+class SendVoltageTask: public OsWrapper::Thread<200>
+{
+public:
+  SendVoltageTask(std::chrono::milliseconds delay, VoltageMeasuringTask<TLeds>& voltmeas, USART<TUSART, Port>& usar, string unit)
+    : delayTask(delay), voltagemeasuringtask(voltmeas), usart(usar), volt(voltagemeasuringtask.voltage), units(unit)
+  {
+  }
+  void Execute() override;
+private:
+  VoltageMeasuringTask<TLeds>& voltagemeasuringtask;
+  USART<TUSART, Port>& usart;
+  string volt = "";
+  string units = "";
+  const char* sendVoltage = nullptr;
+  const char* ptr;
+  std::chrono::milliseconds delayTask;
+};
+
+template<typename TUSART, auto& TLeds, typename Port>
+void SendVoltageTask<TUSART, TLeds, Port>::Execute()
+{
+  usart.Setup(9600, 8'000'000);
+
+  TUSART::CR1::TE::Enable::Set();
+
+  for(;;)
+  {
+    volt = voltagemeasuringtask.voltage + units;
+
+    // Добавляем пробел после значения напряжения
+
+    volt.append("    ");
+
+    // Приводим volt к типу const char* с помощью конструкции .c_str()
+
+    sendVoltage = volt.c_str();
+
+    ptr = sendVoltage;
+
+    while(*ptr!=0)
+    {
+      // Передача сообщения по USART
+      TUSART::DR::Write(*ptr);
+      while(TUSART::SR::TXE::DataRegisterNotEmpty::IsSet())
+      {
+      }
+
+      ptr++;
+    }
+
+    Sleep(delayTask);
+  }
+}
+----
