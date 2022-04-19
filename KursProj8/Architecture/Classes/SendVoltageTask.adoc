@@ -12,8 +12,8 @@
 
 Представим архитектуру класса в StarUML (рисунок 1).
 
-.Архитектура класса SendVoltageTask
-image::img7.png[]
+.Архитектура класса SendVoltageTask на общей архитектуре
+image::architecture.png[]
 
 === 2. Программная реализация класса
 
@@ -32,14 +32,14 @@ template<typename TUSART, auto& TLeds, typename Port>
 class SendVoltageTask: public OsWrapper::Thread<200>
 {
 public:
-  SendVoltageTask(std::chrono::milliseconds delay, VoltageMeasuringTask<TLeds>& voltmeas, USART<TUSART, Port>& usar, string unit)
-    : delayTask(delay), voltagemeasuringtask(voltmeas), usart(usar), volt(voltagemeasuringtask.voltage), units(unit)
+  SendVoltageTask(std::chrono::milliseconds delay, VoltageMeasuringTask<TLeds> voltmeas, USART<TUSART, Port> usar, string unit)
+    : delayTask(delay), voltagemeasuringtask(voltmeas), usart(usar), volt(voltagemeasuringtask.GetValue()), units(unit)
   {
   }
   void Execute() override;
 private:
-  VoltageMeasuringTask<TLeds>& voltagemeasuringtask;
-  USART<TUSART, Port>& usart;
+  VoltageMeasuringTask<TLeds> voltagemeasuringtask;
+  USART<TUSART, Port> usart;
   string volt = "";
   string units = "";
   const char* sendVoltage = nullptr;
@@ -52,15 +52,11 @@ void SendVoltageTask<TUSART, TLeds, Port>::Execute()
 {
   usart.Setup(9600, 8'000'000);
 
-  TUSART::CR1::TE::Enable::Set();
+  usart.OnTransmitt();
 
   for(;;)
   {
-    volt = voltagemeasuringtask.voltage + units;
-
-    // Добавляем пробел после значения напряжения
-
-    volt.append("    ");
+    volt = voltagemeasuringtask.GetValue() + units + "\n";// + units;
 
     // Приводим volt к типу const char* с помощью конструкции .c_str()
 
@@ -68,16 +64,7 @@ void SendVoltageTask<TUSART, TLeds, Port>::Execute()
 
     ptr = sendVoltage;
 
-    while(*ptr!=0)
-    {
-      // Передача сообщения по USART
-      TUSART::DR::Write(*ptr);
-      while(TUSART::SR::TXE::DataRegisterNotEmpty::IsSet())
-      {
-      }
-
-      ptr++;
-    }
+    usart.Transmitt(ptr);
 
     Sleep(delayTask);
   }

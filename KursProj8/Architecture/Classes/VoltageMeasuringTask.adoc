@@ -12,8 +12,8 @@
 
 Представим архитектуру класса в StarUML (рисунок 1).
 
-.Архитектура класса VoltageMeasuringTask
-image::img6.png[]
+.Архитектура класса VoltageMeasuringTask на общей архитектуре
+image::architecture.png[]
 
 === 2. Программная реализация класса
 
@@ -39,29 +39,35 @@ template<auto& TLeds>
 class VoltageMeasuringTask: public OsWrapper::Thread<100>
 {
 public:
-  VoltageMeasuringTask(Filter& filter, CalcLight& calc, Voltage& voltage, StringConverter& conv, Indicate<TLeds>& indic, ADC& adck, DMA& dmak)
+  VoltageMeasuringTask(Filter filter, CalcLight calc, Voltage voltage, StringConverter conv, Indicate<TLeds> indic, ADC adck, DMA dmak)
     :filt(filter), calclight(calc), volt(voltage), convert(conv), indicate(indic), adc(adck), dma(dmak)
   {
   }
   void Execute() override;
   void Measure();
-  string voltage = "";
+  const string GetValue();
 
 private:
-  StringConverter& convert;
-  Filter& filt;
-  CalcLight& calclight;
-  Voltage& volt;
-  Indicate<TLeds>& indicate;
-  DMA& dma;
-  ADC& adc;
+  StringConverter convert;
+  Filter filt;
+  CalcLight calclight;
+  Voltage volt;
+  Indicate<TLeds> indicate;
+  DMA dma;
+  ADC adc;
+  string voltage = "";
 };
 
 template<auto& TLeds>
 void VoltageMeasuringTask<TLeds>::Measure()
 {
-  voltage = convert.ToString(filt.FiltValue(volt.ConvertToVolt(adc.buffer)));
   indicate.light(calclight.Calculate(filt.FiltValue(volt.ConvertToVolt(adc.buffer))));
+}
+
+template<auto& TLeds>
+const string VoltageMeasuringTask<TLeds>::GetValue()
+{
+  return convert.ToString(filt.FiltValue(volt.ConvertToVolt(adc.buffer)));
 }
 
 template<auto& TLeds>
@@ -72,9 +78,7 @@ void VoltageMeasuringTask<TLeds>::Execute()
   adc.Setup();
   dma.Setup();
 
-  // Запускаем преобразование на регулярном канале
-
-  ADC1::CR2::SWSTART::Set(1);
+  adc.StartingConvertion();
 
   for(;;)
   {
