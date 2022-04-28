@@ -422,4 +422,786 @@ image::img38.png[]
 --
 
 == 3. Описание классов
-=== 3.1
+=== 3.1 Класс ADC
+
+.Архитектура класса ADC
+image::img39.png[]
+
+Метод класса ADC Setup() настраивает периферию ADC. Метод StartConvertion() запускает преобразование периферии АЦП. В конструктор приходит ссылка на объект класса DMA и затем в методе Setup() запускается метод класса dma. В буфере хранится код полученный с АЦП.
+
+Приведем код adc.h:
+
+[source,c++]
+----
+#pragma once
+#include "adc1registers.hpp"            //for ADC1
+#include "adccommonregisters.hpp"       //for ADCCommon
+#include "dma.h"                        //for DMA
+
+class ADC
+{
+public:
+ADC(DMA& value): dma(value)
+{
+}
+void Setup();
+void StartingConvertion();
+static inline uint32_t buffer = 0U;
+private:
+DMA& dma;
+};
+----
+
+Приведем код adc.cpp:
+
+[source,c++]
+----
+#include "adc.h"
+
+void ADC::Setup()
+{
+   //Установка режима одиночного преобразования
+
+   ADC1::CR1::RES::Bits12::Set();
+   ADC1::CR2::CONT::SingleConversion::Set();
+
+   // Установка частоты дискретизации в 84 цикла для 0 канала.
+
+   ADC1::SMPR2::SMP0::Cycles84::Set();
+
+   // Установка длины последовательного преобразования на 1
+
+   ADC1::SQR1::L::Conversions1::Set();
+
+   // Установка первого преобразования на 0 канал
+
+   ADC1::SQR3::SQ1::Set(0);
+
+   // Запуск одиночного преобразования
+
+   ADC1::CR2::CONT::Set(1);
+
+   // Режим DMA
+
+   ADC1::CR2::DMA::Enable::Set();
+
+   // Запрос преобразований DMA
+
+   ADC1::CR2::DDS::Set(1);
+
+   // Включим ADC1
+
+   ADC1::CR2::ADON::Set(1);
+
+   // Настройка DMA
+
+   dma.Setup();
+}
+
+void ADC::StartingConvertion()
+{
+    // Запускаем преобразование на регулярном канале
+
+    ADC1::CR2::SWSTART::Set(1);
+}
+----
+
+=== 3.2 Класс DMA
+
+.Архитектура класса DMA
+image::1.png[]
+
+В данном классе метод Setup() настраивает периферию DMA.
+
+Приведем код dma.h:
+
+[source,c++]
+----
+#pragma once
+#include "rccregisters.hpp"     //for RCC
+#include "dma2registers.hpp"    //for DMA2
+
+class DMA
+{
+public:
+  void Setup();
+};
+
+inline DMA dmaForADC;
+----
+
+Приведем код dma.cpp
+
+[source,c++]
+----
+#include "dma.h"
+#include "adc.h"        //for ADC
+
+void DMA::Setup()
+{
+  //Подача тактирования на DMA2
+
+  RCC::AHB1ENR::DMA2EN::Enable::Set();
+
+  //Выбор канала подачи тактирования
+
+  DMA2::S0CR::CHSEL::Set(0);
+
+  //Из периферии в память
+
+  DMA2::S0CR::DIR::Set(0);
+
+  //Количество выполняемых транзакций
+
+  DMA2::S0NDTR::NDT::Set(1);
+
+  //Копируем данные из АЦП
+
+  DMA2::S0PAR::Set(ADC1::DR::Address);
+
+  //Копируем адрес в буфер
+
+  DMA2::S0M0AR::Set(reinterpret_cast<uint32_t>(&ADC::buffer));
+
+  //Не изменяя адрес копируем из ADC1
+
+  DMA2::S0CR::PINC::Set(0);
+
+  //Изменяем адрес памяти чтобы каждое значение записывалось
+  //в след. элемент массива
+
+  DMA2::S0CR::MINC::Set(1);
+
+  //Размер данных буфера 16 бит
+
+  DMA2::S0CR::MSIZE::Set(1);
+
+  //Включение циклического режима
+
+  DMA2::S0CR::CIRC::Set(1);
+
+  //Приоритет высокий
+
+  DMA2::S0CR::PL::Set(2);
+
+  //Отключаем FIFO
+
+  DMA2::S0FCR::FEIE::Set(0);
+
+  //Размер данных периферии
+
+  DMA2::S0CR::PSIZE::Set(1);
+
+  //Пакетная пересылка по памяти и по периферии в одиночный Single
+
+  DMA2::S0CR::MBURST::Set(0);
+  DMA2::S0CR::PBURST::Set(0);
+
+  //Включаем поток
+
+  DMA2::S0CR::EN::Set(1);
+}
+----
+
+=== 3.3 Класс Voltage
+
+.Архитектура класса Voltage
+image::2.png[]
+
+В классе Voltage метод ConvertToVolt принимает значение кода из буфера ADC и преобразовывает в напряжение. В конструктор поступают значение кода ADC максимального (2^(разрядность АЦП)) и минимального (обычно 0), также значение напряжения максимального и минимального.
+
+Представим код Voltage.h:
+
+[source,c++]
+----
+#pragma once
+#include "adc.h"        //for ADC
+#include "dma.h"        //for dmaForADC
+
+class Voltage
+{
+public:
+  Voltage(const float maxVolt, const float minVolt, const float maxCode, const float minCode):
+            k(((maxCode - minCode) != 0) ? (maxVolt - minVolt)/(maxCode - minCode) : 1),
+            b(((maxCode - minCode) != 0) ? (minVolt - minCode) * (maxVolt - minVolt)/(maxCode - minCode) : 0)
+  {
+    // Настройка периферии ADC
+
+    adc.Setup();
+    adc.StartingConvertion();
+  }
+  float ConvertToVolt();
+private:
+  ADC adc = ADC(dmaForADC);
+  const float k = 0.0F;
+  const float b = 0.0F;
+};
+----
+
+Представим код Voltage.cpp
+
+[source,c++]
+----
+#include "voltage.h"
+
+float Voltage::ConvertToVolt()
+{
+  return k * static_cast<float>(ADC::buffer) + b;
+}
+----
+
+=== 3.4 Класс Filter
+
+Класс фильтр отвечает за фильтрацию напряжения полученного из класса Voltage.
+
+.Архитектура класса Filter
+image::3.png[]
+
+Метод filtValue() принимает напряжение и обрабатывает его с помощью цифрового фильтра представленного в ТЗ. В конструктор поступают переменные dt = 100 мс по ТЗ и RC переменная, отвечающая за время фильтрации. Выберем 100 мс, так как при таком значении достаточно точно фильтруются данные.
+
+Представим код Filter.h:
+
+[source,c++]
+----
+#pragma once
+#include <cmath>         //for Exp
+#include <cstdint>
+
+class Filter
+{
+public:
+  constexpr Filter(const float dt, const float RC):
+            t(1.0F - exp(-(dt)/(RC)))
+  {
+  }
+  float FiltValue(float Value);
+private:
+  float filtValue = 0.0F;
+  const float t = 0.0F;
+};
+----
+
+Представим код Filter.cpp
+
+[source,c++]
+----
+#include "filter.h"
+
+float Filter::FiltValue(float Value)
+{
+  filtValue = filtValue + (Value - filtValue) * t;
+  return filtValue;
+}
+----
+
+=== 3.5 Классы Led, Leds, ILed
+
+Класс ILed образует интерфейс класса Led. В классе Led описываются действия для работы светодиодов. Класс Leds совокупирует светодиоды и придает всем действия прописанные в классе Led.
+
+.Архитектура классов Led, Leds, ILed
+image::4.png[]
+
+Представим код класса ILed.h
+
+[source,c++]
+----
+#pragma once
+
+class ILed
+{
+  public:
+    virtual void switchOn() = 0;
+    virtual void switchOff() = 0;
+};
+----
+
+Представим код класса Led.h
+
+[source,c++]
+----
+#pragma once
+#include "iled.h"               //for ILed
+
+template<typename Port, uint32_t pinNum>
+class Led : public ILed
+{
+  public:
+    void switchOn() override
+    {
+      Port::ODR::Set(1U << pinNum);
+    }
+
+    void switchOff() override
+    {
+      Port::ODR::Write(0U << pinNum);
+    }
+};
+----
+
+Представим код класса Leds.h
+
+[source,c++]
+----
+#pragma once
+#include "iled.h"       //for ILed
+
+template<auto* ...pArgs>
+struct Leds
+{
+  ILed* pLeds[sizeof ...(pArgs)] = {pArgs...};
+  void switchOn()
+  {
+    for(auto it: pLeds)
+    {
+      it->switchOn();
+    }
+  }
+
+  void switchOff()
+  {
+    for(auto it: pLeds)
+    {
+      it->switchOff();
+    }
+  }
+};
+----
+
+=== 3.6 Класс CalcLight
+
+.Архитектура класса CalcLight
+image::5.png[]
+
+В класс в метод calculate поступает напряжение, в контструктор поступает напряжение max, min и количество зажигаемых светодиодов, в зависимости от этих параметров в calculate рассчитывается значение включаемых светодиодов.
+
+Представим код calclight.h:
+[source,c++]
+----
+#pragma once
+#include <cstdint>
+#include <math.h>
+
+class CalcLight
+{
+public:
+  constexpr CalcLight(const float maxV, const float minV, const uint32_t count): maxVolt(maxV), minVolt(minV), countLeds(count)
+  {
+  }
+  uint32_t Calculate(float value) const;
+private:
+  const float maxVolt = 3.3f;        //for maximumVoltage
+  const float minVolt = 0.0f;        //for minimumVoltage
+  const uint32_t countLeds = 0U;     //for CountOfLeds
+};
+----
+
+Представим код Calclight.cpp:
+
+[source,c++]
+----
+#include "calclight.h"
+
+uint32_t CalcLight::Calculate(float value) const
+{
+  uint32_t result = 0U;
+  const float percent = value / maxVolt;
+  result = static_cast<uint32_t>((countLeds + 1) * percent);
+  return result;
+}
+----
+
+=== 3.7 Класс Indicate
+
+.Архитектура класса Indicate
+image::6.png[]
+
+В конструктор поступает ссылка на класс CalcLight для последующего преобразования запрошенного из класса Voltage. В класс light поступает количество светодиодов из класса calclight и загораются светодиоды в зависимости от напряжения.
+
+Представим код класса Indicate.h:
+[source,c++]
+----
+#pragma once
+#include <stdint.h>
+#include <string>
+#include "iled.h"               //for ILed
+#include "calclight.h"          //for CalcLight
+
+template <auto& TLeds>
+class Indicate
+{
+public:
+  Indicate(CalcLight& calc): calcLight(calc)
+  {
+  }
+  void light(float value);
+private:
+  CalcLight& calcLight;
+};
+
+template <auto& TLeds>
+void Indicate<TLeds>::light(float value)
+{
+  uint32_t counts = calcLight.Calculate(value);
+  if(counts > sizeof(TLeds))
+  {
+    counts = sizeof(TLeds);
+  }
+  else
+  {
+    TLeds.switchOff();
+    for(uint32_t index = 0; index < counts; ++index)
+    {
+      if(counts > index)
+      {
+        TLeds.pLeds[index]->switchOn();
+      }
+    }
+  }
+}
+----
+
+=== 3.8 Класс VoltageMeasuringTask
+
+.Архитектура класса VoltageMeasuringTask
+image::7.png[]
+
+В конструктор класса попадают ссылки и объекты классов, с которыми предстоит работать в методах класса. В методе measure() зажигаются светодиоды. В методе getValue() хранится значение отфильтрованного напряжения.
+
+Представим код класса VoltageMeasuringTask.h:
+[source,c++]
+----
+#pragma once
+#include <string>
+#include <iostream>
+#include "thread.hpp"                   //for Thread
+#include "filter.h"                     //for Filter
+#include "voltage.h"                    //for Voltage
+#include "indicate.h"                   //for Indicate
+
+template<auto& TLeds>
+class VoltageMeasuringTask: public OsWrapper::Thread<100>
+{
+public:
+  VoltageMeasuringTask(Filter& filter, Voltage voltage, Indicate<TLeds>& indic)
+    :filt(filter), volt(voltage), indicate(indic)
+  {
+  }
+  void Execute() override;
+  void Measure();
+  float GetValue();
+
+private:
+  Filter& filt;
+  Voltage volt;
+  Indicate<TLeds>& indicate;
+};
+
+template<auto& TLeds>
+void VoltageMeasuringTask<TLeds>::Measure()
+{
+  const float tempVoltage = volt.ConvertToVolt();
+  const float tempFilter = filt.FiltValue(tempVoltage);
+  indicate.light(tempFilter);                           // Зажигаем светодиоды
+}
+
+template<auto& TLeds>
+float VoltageMeasuringTask<TLeds>::GetValue()
+{
+  const float tempVoltage = volt.ConvertToVolt();
+  const float tempFilter = filt.FiltValue(tempVoltage);
+  return tempFilter;
+}
+
+template<auto& TLeds>
+void VoltageMeasuringTask<TLeds>::Execute()
+{
+  for(;;)
+  {
+    Measure();
+
+    Sleep(100ms);
+  }
+}
+----
+
+=== 3.9 Класс USART
+
+.Архитектура класса USART
+image::8.png[]
+
+В классе метод setup() настраивает периферию USART. Метод transmitt записывает в бит DR класса USART значение напряжения посимвольно. Метод OnTransmitt() разрешает передачу.
+
+Представим код USART.h:
+[source,c++]
+----
+#pragma once
+#include <cstdint>
+#include "rccregisters.hpp"     //for RCC
+#include "usart2registers.hpp"  //for USART2
+
+template<typename TUSART, typename Port>
+class USART
+{
+public:
+  void Setup(uint32_t speed, uint32_t fgen);
+  void Transmitt(const char* ptr);
+  void OnTransmitt();
+};
+
+template<typename TUSART, typename Port>
+void USART<TUSART, Port>::Setup(uint32_t speed, uint32_t fgen)
+{
+    //Порт А2 и А3 на альтернативный режим работы
+
+    Port::MODER::MODER2::Alternate::Set();
+    Port::MODER::MODER3::Alternate::Set();
+
+    //Назначение портов А2 и А3 на альтернативную функцию 7
+    Port::AFRL::AFRL2::Af7::Set();  // USART2 Tx
+    Port::AFRL::AFRL3::Af7::Set();  // USART2 Rx
+
+    //Подключаем USART2 к системе тактирования APB1
+    RCC::APB1ENR::USART2EN::Enable::Set();
+
+    TUSART::CR1::OVER8::OversamplingBy16::Set();
+    TUSART::CR1::M::Data8bits::Set();
+    TUSART::CR1::PCE::ParityControlDisable::Set();
+
+    TUSART::BRR::Write(fgen / speed); // fgen МГц с внешнего генератора HSE
+    TUSART::CR1::UE::Enable::Set();
+}
+
+template<typename TUSART, typename Port>
+void USART<TUSART, Port>::Transmitt(const char* ptr)
+{
+  while(*ptr!=0)
+  {
+    // Передача сообщения по USART
+    TUSART::DR::Write(*ptr);
+    while(TUSART::SR::TXE::DataRegisterNotEmpty::IsSet())
+    {
+    }
+
+    ptr++;
+  }
+}
+
+template<typename TUSART, typename Port>
+void USART<TUSART, Port>::OnTransmitt()
+{
+  TUSART::CR1::TE::Enable::Set();
+}
+----
+
+=== 3.10 Класс StringConverter
+
+.Архитектура класса StringConverter
+image::9.png[]
+
+В данном классе в конструктор приходит количество знаков после запятой при преобразовании. В методе toString() происходит преобразование напряжения полученного по методу getValue() из класса VoltageMeasuringTask в строку. Scale - количество знаков используемое в методе toString(), а buf отвечает за строку.
+
+Представим код StringConverter.h:
+[source,c++]
+----
+#pragma once
+#include <cstdio>
+#include <iostream>
+
+class StringConverter
+{
+public:
+  constexpr StringConverter(uint32_t count): scale(count)
+  {
+  }
+  std::string ToString(float value);
+private:
+  char buf[10] = "";
+  const uint32_t scale = 0U;
+};
+----
+
+Представим код StringConverter.cpp:
+[source,c++]
+----
+#include "stringconverter.h"
+
+std::string StringConverter::ToString(float value)
+{
+  sprintf(buf, "%.*f", scale, value);
+  return buf;
+}
+----
+
+=== 3.11 Класс SendVoltageTask
+
+.Архитектура класса SendVoltageTask
+image::10.png[]
+
+Класс объединяет другие классы и с помощью них отсылает напряжение по блютузу в телефон. В него также входят по конструктору классы используемые в классе и скорость USART, частота работы USART, единицы измерения по ТЗ.
+
+Представим код класса SendVoltageTask.h:
+[source,c++]
+----
+#pragma once
+#include "thread.hpp"                   //for Thread
+#include "voltagemeasuringtask.h"       //for VoltageMeasuringTask
+#include "usart.h"                      //for USART
+#include "stringconverter.h"            //for StringConverter
+
+template<typename TUSART, auto& TLeds, typename Port>
+class SendVoltageTask: public OsWrapper::Thread<200>
+{
+public:
+  SendVoltageTask(std::chrono::milliseconds delay, VoltageMeasuringTask<TLeds> voltmeas, USART<TUSART, Port>& usar, uint32_t speed, uint32_t fgen, StringConverter& conv, string unit)
+    : delayTask(delay), voltagemeasuringtask(voltmeas), usart(usar), convert(conv), units(unit), volt(convert.ToString(voltagemeasuringtask.GetValue()))
+  {
+    usart.Setup(speed, fgen);
+  }
+  void Execute() override;
+private:
+  StringConverter& convert;
+  VoltageMeasuringTask<TLeds> voltagemeasuringtask;
+  USART<TUSART, Port>& usart;
+  string volt = "";
+  string units = "";
+  const char* sendVoltage = nullptr;
+  const char* ptr;
+  std::chrono::milliseconds delayTask;
+};
+
+template<typename TUSART, auto& TLeds, typename Port>
+void SendVoltageTask<TUSART, TLeds, Port>::Execute()
+{
+  usart.OnTransmitt();
+
+  for(;;)
+  {
+    volt = "Voltage: " + convert.ToString(voltagemeasuringtask.GetValue()) + units + "\n";
+
+    // Приводим volt к типу const char* с помощью конструкции .c_str()
+
+    sendVoltage = volt.c_str();
+
+    ptr = sendVoltage;
+
+    usart.Transmitt(ptr);
+
+    Sleep(delayTask);
+  }
+}
+----
+
+=== 3.12 Класс Main
+
+В классе main производится настройка портов и объявление объектов классов и в методе main запуск задач VoltageMeasuringTask и SendVoltageTask.
+
+Представим код main.cpp:
+[source,c++]
+----
+#include "usart2registers.hpp"          //for USART2
+#include "gpioaregisters.hpp"           //for GPIOA
+#include "gpiocregisters.hpp"           //for GPIOC
+#include "rccregisters.hpp"             //for RCC
+#include "rtos.hpp"                     //for Rtos
+#include "voltagemeasuringtask.h"       //for VoltageMeasuringTask
+#include "sendvoltagetask.h"            //for SendVoltageTask
+#include "calclight.h"                  //for CalcLight
+#include "voltage.h"                    //for Voltage
+#include "stringconverter.h"            //for StringConverter
+#include "usart.h"                      //for USART
+#include "filter.h"                     //for Filter
+#include "iled.h"                       //for ILed
+#include "led.h"                        //for Led
+#include "leds.h"                       //for Leds
+#include "indicate.h"                   //for Indicate
+#include <iostream>
+
+std::uint32_t SystemCoreClock = 16'000'000U;
+
+extern "C"
+{
+  int __low_level_init(void)
+  {
+    //Switch on external 8 MHz oscillator
+    RCC::CR::HSEON::On::Set();
+    while (RCC::CR::HSERDY::NotReady::IsSet())
+    {
+
+    }
+    //Switch system clock on external oscillator
+    RCC::CFGR::SW::Hse::Set();
+    while (!RCC::CFGR::SWS::Hse::IsSet())
+    {
+
+    }
+
+    // Подключить порт А к шине тактирования
+    RCC::AHB1ENR::GPIOAEN::Enable::Set();
+
+    // Настройка порта А.0
+    GPIOA::OSPEEDR::OSPEEDR0::LowSpeed::Set();
+    GPIOA::PUPDR::PUPDR0::PullUp::Set();
+    GPIOA::OTYPER::OT0::OutputPushPull::Set();
+    GPIOA::MODER::MODER0::Analog::Set();
+
+    // Настройка порта А.5
+    GPIOA::OSPEEDR::OSPEEDR5::LowSpeed::Set();
+    GPIOA::PUPDR::PUPDR5::PullUp::Set();
+    GPIOA::OTYPER::OT5::OutputPushPull::Set();
+    GPIOA::MODER::MODER5::Output::Set();
+
+    // Подключить порт C к шине тактирования
+    RCC::AHB1ENR::GPIOCEN::Enable::Set();
+
+    // Настройка порта С.5
+    GPIOC::OSPEEDR::OSPEEDR5::LowSpeed::Set();
+    GPIOC::PUPDR::PUPDR5::PullUp::Set();
+    GPIOC::OTYPER::OT5::OutputPushPull::Set();
+    GPIOC::MODER::MODER5::Output::Set();
+
+    // Настройка порта С.8
+    GPIOC::OSPEEDR::OSPEEDR8::LowSpeed::Set();
+    GPIOC::PUPDR::PUPDR8::PullUp::Set();
+    GPIOC::OTYPER::OT8::OutputPushPull::Set();
+    GPIOC::MODER::MODER8::Output::Set();
+
+    // Настройка порта С.9
+    GPIOC::OSPEEDR::OSPEEDR9::LowSpeed::Set();
+    GPIOC::PUPDR::PUPDR9::PullUp::Set();
+    GPIOC::OTYPER::OT9::OutputPushPull::Set();
+    GPIOC::MODER::MODER9::Output::Set();
+
+    //Переключение на частоту ADC1
+
+    RCC::APB2ENR::ADC1EN::Enable::Set();
+
+    return 1;
+  }
+}
+
+CalcLight calclight(3.3f, 0.0f, 4U);
+Voltage volt(3.3f, 0.0f, 4095U, 0U);
+StringConverter convert(3);
+
+Filter filt(100.0f, 100.0f);
+USART<USART2, GPIOA> usart;
+
+Led<GPIOA, 5U> led1;
+Led<GPIOC, 9U> led2;
+Led<GPIOC, 8U> led3;
+Led<GPIOC, 5U> led4;
+Leds<&led1, &led2, &led3, &led4> leds;
+Indicate<leds> indicate(calclight);
+
+VoltageMeasuringTask<leds> voltageMeasuringTask(filt, volt, indicate);
+SendVoltageTask<USART2, leds, GPIOA> sendVoltageTask(100ms, voltageMeasuringTask, usart, 9600U, 8'000'000U, convert, "[B]");
+
+int main(void)
+{
+  using namespace OsWrapper;
+
+  Rtos::CreateThread(voltageMeasuringTask, "VoltageMeasuringTask", ThreadPriority::highest);
+  Rtos::CreateThread(sendVoltageTask, "SendVoltageTask", ThreadPriority::normal);
+  Rtos::Start();
+}
+----
